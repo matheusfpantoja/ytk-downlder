@@ -9,6 +9,9 @@ const App = {
   downloading: false,
   tema: 'dark',
   pastaFull: '',
+  queue: [],
+  queueRunning: false,
+  queueActive: null,
 
   /* ══════════════════════════════════════════════════════
      INIT — chamado quando pywebview estiver pronto
@@ -366,6 +369,74 @@ const App = {
     if (!confirm('Limpar todo o histórico de downloads?')) return
     await window.pywebview.api.clear_history()
     this.renderHistoryEmpty()
+  },
+
+  /* ══════════════════════════════════════════════════════
+     FILA
+     ══════════════════════════════════════════════════════ */
+  renderQueue() {
+    const section = document.getElementById('queueSection')
+    const list    = document.getElementById('queueList')
+    if (!section || !list) return
+    if (!this.queue.length) {
+      section.style.display = 'none'
+      return
+    }
+    section.style.display = 'block'
+    list.innerHTML = ''
+    this.queue.forEach(item => list.appendChild(this._makeQueueCard(item)))
+  },
+
+  _makeQueueCard(item) {
+    const icons = { aguardando: '⏳', baixando: '⬇', concluido: '✅', erro: '❌' }
+    const card  = document.createElement('div')
+    card.className  = 'queue-card'
+    card.dataset.id = item.id
+    card.dataset.status = item.status
+    const showBar  = item.status === 'baixando'
+    const disabled = item.status === 'baixando' ? 'disabled' : ''
+    card.innerHTML = `
+      <div class="queue-icon">${icons[item.status] || '⏳'}</div>
+      <div class="queue-info">
+        <div class="queue-titulo">${this._esc(item.titulo)}</div>
+        <div class="queue-meta">${this._esc(this._queueMeta(item.params))}</div>
+        <div class="queue-bar-track" style="display:${showBar ? 'block' : 'none'}">
+          <div class="queue-bar-fill" style="width:${Math.round((item.pct || 0) * 100)}%"></div>
+        </div>
+        <div class="queue-detalhe">${this._esc(item.erro || '')}</div>
+      </div>
+      <button class="queue-remove" ${disabled}
+        onclick="App.removeFromQueue('${this._esc(item.id)}')">✕</button>
+    `
+    return card
+  },
+
+  _queueMeta(params) {
+    if (params.tipo === 'video')    return `🎬 ${params.resolucao || '720'}p`
+    if (params.tipo === 'playlist') return `📋 Playlist · ${(params.formato || 'mp3').toUpperCase()} ${params.qualidade || '192'}kbps`
+    return `🎵 ${(params.formato || 'mp3').toUpperCase()} · ${params.qualidade || '192'}kbps`
+  },
+
+  _shortUrl(url) {
+    try {
+      const u = new URL(url)
+      const s = u.hostname.replace(/^www\./, '') + u.pathname
+      return s.length > 52 ? s.slice(0, 49) + '…' : s
+    } catch (_) {
+      return url.length > 52 ? url.slice(0, 49) + '…' : url
+    }
+  },
+
+  removeFromQueue(id) {
+    const item = this.queue.find(i => i.id === id)
+    if (!item || item.status === 'baixando') return
+    this.queue = this.queue.filter(i => i.id !== id)
+    this.renderQueue()
+  },
+
+  clearQueueDone() {
+    this.queue = this.queue.filter(i => i.status === 'aguardando' || i.status === 'baixando')
+    this.renderQueue()
   },
 
   /* ══════════════════════════════════════════════════════
