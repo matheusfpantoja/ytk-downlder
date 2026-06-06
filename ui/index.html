@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="pt-BR" data-tema="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>YTK DOWNLDER</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+
+  <!-- ═══════════════ SIDEBAR ═══════════════ -->
+  <aside class="sidebar">
+
+    <!-- Logo -->
+    <div class="logo">
+      <div class="logo-mark">
+        <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+          <path d="M3 2.5L13 8L3 13.5V2.5Z"/>
+        </svg>
+      </div>
+      <div class="logo-name">
+        <div class="logo-ytk">YTK</div>
+        <div class="logo-sub">Downlder</div>
+      </div>
+    </div>
+
+    <!-- Busca rápida -->
+    <div class="sidebar-search">
+      <div class="search-inner" onclick="App.tab('search'); document.getElementById('searchInput').focus()">
+        <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" width="14" height="14" style="stroke:#ffffff;fill:none;flex-shrink:0"><circle cx="7" cy="7" r="4.5" stroke="#ffffff" stroke-width="1.5"/><line x1="10.5" y1="10.5" x2="14" y2="14" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round"/></svg>
+        <input type="text" placeholder="Buscar música, artista..." readonly
+          style="cursor:pointer">
+      </div>
+    </div>
+
+    <!-- Nav -->
+    <nav class="nav">
+      <div class="nav-section">Principal</div>
+
+      <button class="nav-btn active" data-tab="download" onclick="App.tab('download')">
+        <span class="icon">⬇</span> Download
+      </button>
+
+      <button class="nav-btn" data-tab="search" onclick="App.tab('search')">
+        <span class="icon">⌕</span> Buscar
+      </button>
+
+      <button class="nav-btn" data-tab="history" onclick="App.tab('history')">
+        <span class="icon">◷</span> Histórico
+      </button>
+    </nav>
+
+    <!-- Footer -->
+    <div class="sidebar-footer">
+      <div class="folder-label">Salvar em</div>
+      <div class="folder-path" id="folderPath" onclick="App.chooseFolder()" title="Clique para mudar">–</div>
+      <button class="btn-ghost" onclick="App.openFolder()">
+        ↗ &nbsp;Abrir pasta
+      </button>
+      <button class="btn-ghost theme-toggle" onclick="App.toggleTheme()" id="themeBtn">
+        <span class="dot" style="width:7px;height:7px;border-radius:50%;background:var(--gold);display:inline-block;box-shadow:0 0 5px var(--gold-glow)"></span>
+        <span id="themeLabel">Tema claro</span>
+      </button>
+      <div class="shortcuts-hint" title="Atalhos de teclado disponíveis">
+        <span>⌨</span>
+        <span>Ctrl+V baixar · Ctrl+F buscar</span>
+        <span>Ctrl+D download · Ctrl+H histórico</span>
+        <span>Esc cancelar</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ═══════════════ MAIN ═══════════════ -->
+  <main class="main">
+
+    <!-- ── TAB: DOWNLOAD ── -->
+    <section class="tab-panel active" id="tab-download">
+
+      <div class="page-header">
+        <div class="page-eyebrow">Novo download</div>
+        <h1>Cole o link e baixe</h1>
+        <p>YouTube, SoundCloud, Bandcamp, Vimeo e mais de 1000 sites</p>
+      </div>
+
+      <!-- URL -->
+      <div class="section-block">
+        <div class="card-label">Link</div>
+        <div class="url-row">
+          <input id="urlInput" type="text" class="input-url"
+            placeholder="Cole o link (YouTube, SoundCloud, Bandcamp, Vimeo...)"
+            onkeydown="if(event.key==='Enter') App.download()">
+          <button class="btn-icon" onclick="App.loadTxt()" title="Carregar .txt com links">
+            <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="#939393">
+              <path d="M1.5 3A1.5 1.5 0 0 0 0 4.5v8A1.5 1.5 0 0 0 1.5 14h13a1.5 1.5 0 0 0 1.5-1.5V6.5A1.5 1.5 0 0 0 14.5 5H7.621a1.5 1.5 0 0 1-1.06-.44L5.44 3.44A1.5 1.5 0 0 0 4.38 3H1.5z"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <hr class="section-divider">
+
+      <!-- Configurações -->
+      <div class="section-block">
+        <div class="card-label">Configurações</div>
+
+        <div class="opt-row">
+          <div class="opt-label">Tipo</div>
+          <div class="radio-group" id="tipoGroup">
+            <label class="radio-pill">
+              <input type="radio" name="tipo" value="musica" checked
+                onchange="App.onTipoChange()"> 🎵 Música
+            </label>
+            <label class="radio-pill">
+              <input type="radio" name="tipo" value="video"
+                onchange="App.onTipoChange()"> 🎬 Vídeo
+            </label>
+            <label class="radio-pill">
+              <input type="radio" name="tipo" value="playlist"
+                onchange="App.onTipoChange()"> 📋 Playlist
+            </label>
+          </div>
+          <div id="urlHint" class="url-hint"></div>
+        </div>
+
+        <!-- Opções de áudio (default) -->
+        <div id="audioOpts">
+          <div class="opt-row">
+            <div class="opt-label">Qualidade</div>
+            <div class="radio-group">
+              <label class="radio-pill"><input type="radio" name="qualidade" value="128"> 128 kbps</label>
+              <label class="radio-pill"><input type="radio" name="qualidade" value="192" checked> 192 kbps</label>
+              <label class="radio-pill"><input type="radio" name="qualidade" value="320"> 320 kbps</label>
+            </div>
+          </div>
+          <div class="opt-row">
+            <div class="opt-label">Formato</div>
+            <div class="radio-group">
+              <label class="radio-pill"><input type="radio" name="formato" value="mp3" checked> MP3</label>
+              <label class="radio-pill"><input type="radio" name="formato" value="wav"> WAV</label>
+              <label class="radio-pill"><input type="radio" name="formato" value="flac"> FLAC</label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Opções de vídeo (oculto) -->
+        <div id="videoOpts" style="display:none">
+          <div class="opt-row">
+            <div class="opt-label">Resolução</div>
+            <div class="radio-group">
+              <label class="radio-pill"><input type="radio" name="resolucao" value="360"> 360p</label>
+              <label class="radio-pill"><input type="radio" name="resolucao" value="480"> 480p</label>
+              <label class="radio-pill"><input type="radio" name="resolucao" value="720" checked> 720p</label>
+              <label class="radio-pill"><input type="radio" name="resolucao" value="1080"> 1080p</label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Recorte -->
+        <div class="opt-row">
+          <div class="opt-label">Recorte</div>
+          <div class="trim-row">
+            <label class="checkbox-pill">
+              <input type="checkbox" id="trimCheck" onchange="App.toggleTrim()"> Ativar
+            </label>
+            <input id="trimStart" class="input-sm" type="text" placeholder="0:30" disabled>
+            <span class="trim-sep">→</span>
+            <input id="trimEnd" class="input-sm" type="text" placeholder="3:45" disabled>
+          </div>
+        </div>
+
+        <!-- Extras -->
+        <div class="opt-row">
+          <div class="opt-label">Extras</div>
+          <div class="checks-col">
+            <label class="checkbox-pill">
+              <input type="checkbox" id="chkOrganizar" checked> Organizar por artista/canal
+            </label>
+            <label class="checkbox-pill">
+              <input type="checkbox" id="chkMeta" checked> Metadados automáticos (artista, capa)
+            </label>
+            <label class="checkbox-pill">
+              <input type="checkbox" id="chkSkip" checked> Pular se já foi baixado
+            </label>
+            <label class="checkbox-pill">
+              <input type="checkbox" id="chkNotify" checked> Notificar ao concluir
+            </label>
+          </div>
+        </div>
+      </div>
+
+      <hr class="section-divider">
+
+      <!-- Botões -->
+      <div class="btn-row">
+        <button class="btn-primary" id="btnDownload" onclick="App.download()">
+          <span id="btnLabel">⬇  Baixar agora</span>
+        </button>
+        <button class="btn-secondary" id="btnAddQueue" onclick="App.addToQueue()">
+          ＋ Adicionar à fila
+        </button>
+      </div>
+
+      <!-- Zona decorativa de drag & drop -->
+      <div class="drop-zone-hint">
+        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="22" height="22">
+          <path d="M12 3v12M8 11l4 4 4-4" stroke="#c0c0c0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M4 17v1a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-1" stroke="#c0c0c0" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <span>Ou arraste um link aqui</span>
+      </div>
+
+      <!-- Fila de downloads -->
+      <div id="queueSection" style="display:none">
+        <div class="queue-header">
+          <span class="queue-header-title">Fila de downloads</span>
+          <button class="btn-ghost btn-ghost-sm" onclick="App.clearQueueDone()">
+            Limpar concluídos
+          </button>
+        </div>
+        <div id="queueList"></div>
+      </div>
+
+
+
+    </section>
+
+    <!-- ── TAB: BUSCAR ── -->
+    <section class="tab-panel" id="tab-search">
+      <div class="page-header">
+        <div class="page-eyebrow">Descobrir</div>
+        <h1>Buscar música</h1>
+        <p>Pesquise no YouTube ou SoundCloud sem abrir o navegador</p>
+      </div>
+
+      <div class="card bordered">
+        <div class="card-label">Pesquisa</div>
+        <div class="opt-row" style="margin-bottom:10px">
+          <div class="opt-label">Fonte</div>
+          <div class="radio-group" id="searchSourceGroup">
+            <label class="radio-pill">
+              <input type="radio" name="searchSource" value="youtube" checked> YouTube
+            </label>
+            <label class="radio-pill">
+              <input type="radio" name="searchSource" value="soundcloud"> SoundCloud
+            </label>
+          </div>
+        </div>
+        <div class="search-row">
+          <input id="searchInput" type="text" class="input-url"
+            placeholder="Nome da música, artista ou álbum…"
+            onkeydown="if(event.key==='Enter') App.search()">
+          <button class="btn-search" id="btnSearch" onclick="App.search()">Buscar</button>
+        </div>
+        <div class="search-status" id="searchStatus"></div>
+      </div>
+
+      <div id="searchResults"></div>
+    </section>
+
+    <!-- ── TAB: HISTÓRICO ── -->
+    <section class="tab-panel" id="tab-history">
+      <div class="page-header history-header">
+        <div>
+          <div class="page-eyebrow">Registro</div>
+          <h1>Histórico</h1>
+          <p>Todos os downloads anteriores</p>
+        </div>
+        <button class="btn-danger" onclick="App.clearHistory()">🗑 Limpar</button>
+      </div>
+      <div id="historyList"></div>
+    </section>
+
+  </main>
+</div>
+
+<!-- ── Pop-up de conclusão ── -->
+<div id="downloadPopup" class="popup-overlay" style="display:none" onclick="App.closePopup(event)">
+  <div class="popup-card">
+    <div class="popup-icon-wrap" id="popupIconWrap">
+      <svg id="popupIcon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <polyline points="20 6 9 17 4 12" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <div class="popup-title" id="popupTitle">Download concluído!</div>
+    <div class="popup-msg" id="popupMsg">Seu arquivo foi salvo com sucesso.</div>
+    <button class="popup-btn" onclick="App.closePopup()">OK</button>
+  </div>
+</div>
+
+<!-- Drop overlay — visível ao arrastar um link sobre a janela -->
+<div id="dropOverlay" class="drop-overlay" aria-hidden="true">
+  <div class="drop-overlay-inner">
+    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
+      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
+    </svg>
+    <span class="drop-overlay-text">Solte o link aqui</span>
+    <span class="drop-overlay-sub">YouTube, SoundCloud, Vimeo e mais</span>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
