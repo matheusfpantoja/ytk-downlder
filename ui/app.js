@@ -173,28 +173,27 @@ const App = {
      DOWNLOAD
      ══════════════════════════════════════════════════════ */
   async download() {
-    if (this.downloading) return
-
-    // Mostrar/esconder opções de acordo com o tipo
     const tipo = document.querySelector('input[name="tipo"]:checked')?.value
     document.getElementById('audioOpts').style.display = tipo === 'video' ? 'none' : 'block'
     document.getElementById('videoOpts').style.display = tipo === 'video' ? 'block' : 'none'
 
     const params = this._buildParams()
-    if (!params.url) {
-      return
+    if (!params.url) return
+
+    const item = {
+      id:     'q_' + Date.now() + '_' + Math.random().toString(36).slice(2),
+      url:    params.url,
+      titulo: this._shortUrl(params.url),
+      params,
+      status: 'aguardando',
+      pct:    0,
+      erro:   null,
     }
 
-    const r = await window.pywebview.api.start_download(params)
-
-    if (!r.ok) {
-      this.showPopup(false, r.error)
-      return
-    }
-
-    this.downloading = true
-    this.setBtnState(true)
-    this.showProgress(true)
+    this.queue.unshift(item)
+    document.getElementById('urlInput').value = ''
+    this.renderQueue()
+    if (!this.queueRunning) this.processQueue()
   },
 
   updateProgress(d) {
