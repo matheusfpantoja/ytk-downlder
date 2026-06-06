@@ -196,48 +196,6 @@ const App = {
     if (!this.queueRunning) this.processQueue()
   },
 
-  updateProgress(d) {
-    const bar    = document.getElementById('progBar')
-    const status = document.getElementById('progStatus')
-    const detail = document.getElementById('progDetail')
-
-    if (bar)    bar.style.width    = Math.round(d.pct * 100) + '%'
-    if (status) status.textContent = d.titulo ? '⬇ ' + d.titulo : 'Baixando…'
-    if (detail) detail.textContent = d.detalhe || ''
-  },
-
-  setStatus(msg) {
-    const el = document.getElementById('progStatus')
-    if (el) el.textContent = msg
-  },
-
-  onDownloadDone(data) {
-    this.downloading = false
-    this.setBtnState(false)
-
-    const bar = document.getElementById('progBar')
-
-    if (data.ok) {
-      if (bar) { bar.style.width = '100%' }
-      setTimeout(() => {
-        this.showPopup(true, null)
-        if (bar) { bar.style.width = '0%'; bar.style.background = '' }
-        this.setStatus('Pronto para baixar')
-        const det = document.getElementById('progDetail')
-        if (det) det.textContent = ''
-      }, 600)
-    } else {
-      if (bar) bar.style.background = '#f43f5e'
-      const msg = data.error || 'Ocorreu um erro durante o download.'
-      setTimeout(() => {
-        this.showPopup(false, msg)
-        if (bar) { bar.style.width = '0%'; bar.style.background = '' }
-        this.setStatus('Pronto para baixar')
-        const det = document.getElementById('progDetail')
-        if (det) det.textContent = ''
-      }, 600)
-    }
-  },
 
   showPopup(ok, errorMsg) {
     const popup    = document.getElementById('downloadPopup')
@@ -269,17 +227,6 @@ const App = {
     setTimeout(() => { popup.style.display = 'none' }, 220)
   },
 
-  setBtnState(loading) {
-    const btn   = document.getElementById('btnDownload')
-    const label = document.getElementById('btnLabel')
-    if (btn)   btn.disabled        = loading
-    if (label) label.textContent   = loading ? '⏳  Baixando…' : '⬇  Baixar agora'
-  },
-
-  showProgress(show) {
-    const card = document.getElementById('progressCard')
-    if (card) card.style.display = show ? 'block' : 'none'
-  },
 
   /* ══════════════════════════════════════════════════════
      BUSCA
@@ -568,7 +515,7 @@ document.addEventListener('keydown', async (e) => {
   }
 
   // Escape → cancela download em andamento
-  if (e.key === 'Escape' && App.downloading) {
+  if (e.key === 'Escape' && App.queueRunning) {
     e.preventDefault()
     await window.pywebview.api.cancel_download()
     return
