@@ -1266,3 +1266,209 @@ body {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
+
+/* ═══════════════════════════════════════════════════
+   MODAIS SPOTIFY
+   ═══════════════════════════════════════════════════ */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 5, 13, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9998;
+  opacity: 0;
+  transition: opacity 200ms ease;
+  backdrop-filter: blur(2px);
+}
+.modal-overlay.modal-visible { opacity: 1; }
+
+.modal-card {
+  background: #e8e8ee;
+  border-radius: 14px;
+  padding: 28px 28px 24px;
+  width: 420px;
+  max-width: 92vw;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  transform: translateY(10px) scale(0.97);
+  transition: transform 200ms cubic-bezier(.4,0,.2,1);
+  box-shadow: 0 24px 60px rgba(0,0,0,.45);
+}
+.modal-overlay.modal-visible .modal-card { transform: translateY(0) scale(1); }
+
+.modal-card-lg {
+  width: 560px;
+  max-height: 80vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.modal-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #0e0e1a;
+  letter-spacing: -.01em;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  font-size: 16px;
+  color: #666;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background 120ms;
+}
+.modal-close:hover { background: rgba(0,0,0,0.08); }
+
+.modal-desc {
+  font-size: 12px;
+  color: #44445a;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.modal-link {
+  font-size: 12px;
+  color: #1db954;
+  cursor: pointer;
+  font-weight: 600;
+  text-decoration: underline;
+  margin-top: -6px;
+}
+.modal-link:hover { color: #17a348; }
+
+.modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.modal-field-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: #939393;
+}
+
+.modal-error {
+  font-size: 11px;
+  color: var(--red);
+  background: rgba(231,76,60,.10);
+  border-radius: 6px;
+  padding: 8px 12px;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+/* Spotify preview — formato/qualidade row */
+.spot-format-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--main-b);
+}
+
+.spot-track-controls {
+  display: flex;
+  gap: 6px;
+  margin-bottom: -4px;
+}
+
+.spot-track-list {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 120px;
+  max-height: 340px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-right: 4px;
+}
+
+.spot-track-item {
+  border-radius: 6px;
+  transition: background 100ms;
+}
+.spot-track-item:hover { background: rgba(0,0,0,0.05); }
+
+.spot-track-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  cursor: pointer;
+  width: 100%;
+}
+
+.spot-track-check { flex-shrink: 0; cursor: pointer; }
+
+.spot-track-num {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: #999;
+  width: 22px;
+  flex-shrink: 0;
+  text-align: right;
+}
+
+.spot-track-titulo {
+  font-size: 12px;
+  font-weight: 600;
+  color: #0e0e1a;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.spot-track-artista {
+  font-size: 11px;
+  color: #666;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+
+.spot-track-dur {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: #999;
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* Badge Spotify no histórico */
+.hist-fonte-badge {
+  display: inline-block;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  background: #1db954;
+  color: #fff;
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-left: 6px;
+  vertical-align: middle;
+  text-transform: uppercase;
+}
