@@ -439,6 +439,52 @@ const App = {
     this.renderQueue()
   },
 
+  addToQueue() {
+    const raw  = document.getElementById('urlInput').value || ''
+    const urls = raw.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'))
+    if (!urls.length) return
+
+    const baseParams = this._buildParams()
+    urls.forEach(url => {
+      this.queue.push({
+        id:     'q_' + Date.now() + '_' + Math.random().toString(36).slice(2),
+        url,
+        titulo: this._shortUrl(url),
+        params: { ...baseParams, url },
+        status: 'aguardando',
+        pct:    0,
+        erro:   null,
+      })
+    })
+
+    document.getElementById('urlInput').value = ''
+    this.renderQueue()
+    if (!this.queueRunning) this.processQueue()
+  },
+
+  async processQueue() {
+    const item = this.queue.find(i => i.status === 'aguardando')
+    if (!item) {
+      this.queueRunning = false
+      this.queueActive  = null
+      return
+    }
+
+    this.queueRunning = true
+    this.queueActive  = item.id
+    item.status = 'baixando'
+    this.renderQueue()
+
+    const r = await window.pywebview.api.start_download(item.params)
+    if (!r.ok) {
+      item.status = 'erro'
+      item.erro   = r.error || 'Erro ao iniciar download'
+      this.queueActive = null
+      this.renderQueue()
+      this.processQueue()
+    }
+  },
+
   /* ══════════════════════════════════════════════════════
      UTILS
      ══════════════════════════════════════════════════════ */
