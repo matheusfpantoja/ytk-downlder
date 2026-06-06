@@ -45,10 +45,47 @@ const App = {
      ══════════════════════════════════════════════════════ */
   handle(event, data) {
     switch (event) {
-      case 'progress':       this.updateProgress(data);       break
-      case 'status':         this.setStatus(data.msg);        break
-      case 'download_complete': this.onDownloadDone(data);    break
-      case 'history_update': this.prependHistoryItem(data.item); break
+      case 'progress': {
+        if (!this.queueActive) break
+        const item = this.queue.find(i => i.id === this.queueActive)
+        if (item) item.pct = data.pct || 0
+        const card = document.querySelector(`.queue-card[data-id="${this.queueActive}"]`)
+        if (card) {
+          const bar     = card.querySelector('.queue-bar-fill')
+          const detalhe = card.querySelector('.queue-detalhe')
+          const titulo  = card.querySelector('.queue-titulo')
+          if (bar)     bar.style.width      = Math.round((data.pct || 0) * 100) + '%'
+          if (detalhe) detalhe.textContent  = data.detalhe || ''
+          if (data.titulo && titulo) titulo.textContent = data.titulo.slice(0, 52)
+        }
+        break
+      }
+      case 'status': {
+        if (!this.queueActive) break
+        const card = document.querySelector(`.queue-card[data-id="${this.queueActive}"]`)
+        if (card) {
+          const detalhe = card.querySelector('.queue-detalhe')
+          if (detalhe) detalhe.textContent = data.msg || ''
+        }
+        break
+      }
+      case 'download_complete': {
+        if (this.queueActive) {
+          const item = this.queue.find(i => i.id === this.queueActive)
+          if (item) {
+            item.status = data.ok ? 'concluido' : 'erro'
+            item.erro   = data.ok ? null : (data.error || 'Erro no download')
+            item.pct    = data.ok ? 1 : item.pct
+          }
+          this.queueActive = null
+          this.renderQueue()
+          this.processQueue()
+        }
+        break
+      }
+      case 'history_update':
+        this.prependHistoryItem(data.item)
+        break
     }
   },
 
