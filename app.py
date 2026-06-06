@@ -11,6 +11,9 @@ import os
 import subprocess
 import sys
 from datetime import datetime
+import re
+import base64
+import webbrowser
 
 try:
     from plyer import notification as _plyer_notification
@@ -66,13 +69,16 @@ class Historico:
         with open(HISTORICO_PATH, "w", encoding="utf-8") as f:
             json.dump(self.itens, f, ensure_ascii=False, indent=2)
 
-    def add(self, titulo, url, formato, qualidade, arquivo):
-        self.itens.insert(0, {
+    def add(self, titulo, url, formato, qualidade, arquivo, fonte=""):
+        item = {
             "titulo": titulo, "url": url,
             "formato": formato, "qualidade": qualidade,
             "arquivo": arquivo,
             "data": datetime.now().strftime("%d/%m/%Y %H:%M"),
-        })
+        }
+        if fonte:
+            item["fonte"] = fonte
+        self.itens.insert(0, item)
         self.itens = self.itens[:500]
         self.save()
 
@@ -358,7 +364,7 @@ class Api:
         arquivo   = ""
         if info.get("requested_downloads"):
             arquivo = info["requested_downloads"][0].get("filepath", "")
-        self.historico.add(titulo, url, fmt, qual, arquivo)
+        self.historico.add(titulo, url, fmt, qual, arquivo, fonte=params.get("fonte", ""))
         self._emit("log",            {"msg": f"✅ {titulo}"})
         self._emit("history_update", {"item": self.historico.itens[0]})
 
@@ -408,6 +414,114 @@ class Api:
 
     def _short(self, p):
         return ("…" + p[-28:]) if len(p) > 31 else p
+
+    # ── Spotify ──────────────────────────────────────────
+
+    def _spotify_token(self, client_id, client_secret):
+        """Obtém access token do Spotify via Client Credentials Flow."""
+        import requests
+        auth = base64.b64encode(f"{client_id}:{client_secret}".encode()).decode()
+        r = requests.post(
+            "https://accounts.spotify.com/api/token",
+            headers={
+                "Authorization": f"Basic {auth}",
+                "Content-Type": "application/x-www-form-urlencoded",
+            },
+            data={"grant_type": "client_credentials"},
+            timeout=15,
+        )
+        r.raise_for_status()
+        return r.json()["access_token"]
+
+    def _spotify_playlist_thread(self, spotify_url):
+        """Extrai faixas de uma playlist Spotify e emite evento spotify_tracks."""
+        import requests
+        try:
+            cfg = {}
+            try:
+                if os.path.exists(CONFIG_PATH):
+                    with open(CONFIG_PATH, encoding="utf-8") as f:
+                        cfg = json.load(f)
+            except Exception:
+                pass
+
+            client_id     = cfg.get("spotify_client_id", "").strip()
+            client_secret = cfg.get("spotify_client_secret", "").strip()
+
+            if not client_id or not client_secret:
+                self._emit("spotify_tracks", {"ok": False, "error": "no_credentials"})
+                return
+
+            m = re.search(r"open\.spotify\.com/playlist/([A-Za-z0-9]+)", spotify_url)
+            if not m:
+                self._emit("spotify_tracks", {"ok": False, "error": "URL de playlist Spotify inválida."})
+                return
+
+            playlist_id = m.group(1)
+            token   = self._spotify_token(client_id, client_secret)
+            headers = {"Authorization": f"Bearer {token}"}
+
+            r = requests.get(
+                f"https://api.spotify.com/v1/playlists/{playlist_id}?fields=name",
+                headers=headers, timeout=15,
+            )
+            r.raise_for_status()
+            playlist_nome = r.json().get("name", "Playlist Spotify")
+
+            faixas = []
+            url = (
+                f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks"
+                f"?fields=items(track(name,artists(name),duration_ms,type)),next&limit=100"
+            )
+            while url:
+                r = requests.get(url, headers=headers, timeout=15)
+                r.raise_for_status()
+                data = r.json()
+                for item in data.get("items", []):
+                    track = item.get("track")
+                    if not track or track.get("type") != "track":
+                        continue
+                    nome     = track.get("name", "")
+                    artistas = ", ".join(a["name"] for a in track.get("artists", []))
+                    ms       = track.get("duration_ms", 0)
+                    duracao  = f"{ms // 60000}:{(ms % 60000) // 1000:02d}"
+                    faixas.append({"titulo": nome, "artista": artistas, "duracao": duracao})
+                url = data.get("next")
+
+            self._emit("spotify_tracks", {
+                "ok": True,
+                "playlist_nome": playlist_nome,
+                "faixas": faixas,
+            })
+        except Exception as e:
+            self._emit("spotify_tracks", {"ok": False, "error": str(e)})
+
+    def get_spotify_playlist_info(self, spotify_url):
+        """Inicia extração de faixas de playlist Spotify (assíncrono via thread)."""
+        threading.Thread(
+            target=self._spotify_playlist_thread,
+            args=(spotify_url,),
+            daemon=True,
+        ).start()
+        return {"ok": True}
+
+    def save_spotify_credentials(self, cfg):
+        """Salva e valida credenciais Spotify no .config.json."""
+        client_id     = (cfg.get("client_id") or "").strip()
+        client_secret = (cfg.get("client_secret") or "").strip()
+        if not client_id or not client_secret:
+            return {"ok": False, "error": "Preencha Client ID e Client Secret."}
+        try:
+            self._spotify_token(client_id, client_secret)
+        except Exception:
+            return {"ok": False, "error": "Credenciais inválidas. Verifique o Client ID e Secret no Spotify Developer."}
+        self.save_config({"spotify_client_id": client_id, "spotify_client_secret": client_secret})
+        return {"ok": True}
+
+    def open_url(self, url):
+        """Abre URL no navegador padrão do sistema."""
+        webbrowser.open(url)
+        return True
 
 
 # ─── Iniciar ──────────────────────────────────────────────────
