@@ -1136,6 +1136,16 @@ body {
   padding: 4px 10px;
 }
 
+.queue-header .btn-ghost {
+  color: #939393;
+  border-color: #939393;
+}
+
+.queue-header .btn-ghost:hover {
+  background: #939393;
+  color: #fff;
+}
+
 .queue-card {
   display: flex;
   align-items: flex-start;
