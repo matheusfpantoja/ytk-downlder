@@ -6,7 +6,6 @@
 const App = {
 
   /* ── Estado ───────────────────────────────────────────── */
-  downloading: false,
   tema: 'dark',
   pastaFull: '',
   queue: [],
