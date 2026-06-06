@@ -924,6 +924,7 @@ body {
   gap: 8px;
   width: 100%;
   padding: 11px;
+  margin-top: 20px;
   margin-bottom: 10px;
   border: 1.5px dashed #d0d0d0;
   border-radius: 10px;
@@ -1090,6 +1091,8 @@ body {
 .btn-row .btn-primary {
   flex: 1;
   min-width: 160px;
+  margin-bottom: 0;
+  padding: 12px 20px;
 }
 
 .btn-secondary {
@@ -1151,11 +1154,12 @@ body {
   align-items: flex-start;
   gap: 12px;
   padding: 12px 14px;
-  border: 1px solid #e5e5e5;
+  border: 1px solid #7a7a7a;
   border-radius: 10px;
   margin-bottom: 8px;
-  background: #fafafa;
+  background: #939393;
   animation: fadeSlideIn 0.18s ease both;
+  color: #ffffff;
 }
 
 [data-tema="dark"] .queue-card {
@@ -1195,13 +1199,13 @@ body {
 
 .queue-meta {
   font-size: 11px;
-  color: #939393;
+  color: rgba(255,255,255,0.75);
   margin-bottom: 6px;
 }
 
 .queue-bar-track {
   height: 4px;
-  background: #e5e5e5;
+  background: rgba(255,255,255,0.25);
   border-radius: 2px;
   overflow: hidden;
   margin-bottom: 4px;
@@ -1213,7 +1217,7 @@ body {
 
 .queue-bar-fill {
   height: 100%;
-  background: #939393;
+  background: #ffffff;
   border-radius: 2px;
   transition: width 0.3s ease;
 }
@@ -1228,7 +1232,7 @@ body {
 
 .queue-detalhe {
   font-size: 11px;
-  color: #939393;
+  color: rgba(255,255,255,0.75);
   font-family: 'DM Mono', monospace;
   white-space: nowrap;
   overflow: hidden;
@@ -1239,7 +1243,7 @@ body {
   background: none;
   border: none;
   cursor: pointer;
-  color: #aaa;
+  color: rgba(255,255,255,0.70);
   font-size: 13px;
   padding: 2px 4px;
   border-radius: 4px;
