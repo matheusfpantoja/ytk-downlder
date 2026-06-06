@@ -11,6 +11,8 @@ const App = {
   queue: [],
   queueRunning: false,
   queueActive: null,
+  spotifyUrl:    '',
+  spotifyTracks: [],
 
   /* ══════════════════════════════════════════════════════
      INIT — chamado quando pywebview estiver pronto
@@ -85,6 +87,19 @@ const App = {
       case 'history_update':
         this.prependHistoryItem(data.item)
         break
+      case 'spotify_tracks': {
+        document.getElementById('urlHint').textContent = ''
+        if (!data.ok) {
+          if (data.error === 'no_credentials') {
+            App.openSpotifyCredModal()
+          } else {
+            document.getElementById('urlHint').textContent = '❌ ' + data.error
+          }
+        } else {
+          App.openSpotifyPreview(data)
+        }
+        break
+      }
     }
   },
 
@@ -172,6 +187,11 @@ const App = {
      DOWNLOAD
      ══════════════════════════════════════════════════════ */
   async download() {
+    const rawUrl = document.getElementById('urlInput').value.trim()
+    if (/open\.spotify\.com\/playlist\//i.test(rawUrl)) {
+      App.openSpotifyFlow(rawUrl)
+      return
+    }
     const tipo = document.querySelector('input[name="tipo"]:checked')?.value
     document.getElementById('audioOpts').style.display = tipo === 'video' ? 'none' : 'block'
     document.getElementById('videoOpts').style.display = tipo === 'video' ? 'block' : 'none'
@@ -329,12 +349,14 @@ const App = {
     card.className = 'hist-card'
     card.style.animationDelay = (delay * 20) + 'ms'
 
-    const pasta = item.arquivo ? item.arquivo.replace(/[^/\\]*$/, '').slice(0, -1) : ''
+    const pasta      = item.arquivo ? item.arquivo.replace(/[^/\\]*$/, '').slice(0, -1) : ''
+    const spotBadge  = item.fonte === 'Spotify'
+      ? `<span class="hist-fonte-badge">Spotify</span>` : ''
 
     card.innerHTML = `
       <div class="hist-badge">${this._esc((item.formato || 'mp3').toUpperCase())}</div>
       <div class="hist-info">
-        <div class="hist-title">${this._esc((item.titulo || '').substring(0, 52))}</div>
+        <div class="hist-title">${this._esc((item.titulo || '').substring(0, 52))}${spotBadge}</div>
         <div class="hist-meta">${this._esc(item.qualidade || '')} · ${this._esc(item.data || '')}</div>
       </div>
       ${pasta ? `<button class="hist-open" data-path="${this._esc(pasta)}">📂</button>` : ''}
@@ -394,6 +416,7 @@ const App = {
   },
 
   _queueMeta(params) {
+    if (params.fonte === 'Spotify') return `🎵 Spotify · ${(params.formato||'mp3').toUpperCase()} · ${params.qualidade||'320'}kbps`
     if (params.tipo === 'video')    return `🎬 ${params.resolucao || '720'}p`
     if (params.tipo === 'playlist') return `📋 Playlist · ${(params.formato || 'mp3').toUpperCase()} ${params.qualidade || '192'}kbps`
     return `🎵 ${(params.formato || 'mp3').toUpperCase()} · ${params.qualidade || '192'}kbps`
@@ -477,6 +500,165 @@ const App = {
       .replace(/>/g,'&gt;')
       .replace(/"/g,'&quot;')
   },
+}
+
+/* ══════════════════════════════════════════════════════
+   SPOTIFY — fluxo de importação de playlist
+   ══════════════════════════════════════════════════════ */
+
+App.openSpotifyFlow = function(url) {
+  this.spotifyUrl = url
+  document.getElementById('urlHint').textContent = '⏳ Carregando playlist Spotify…'
+  window.pywebview.api.get_spotify_playlist_info(url)
+}
+
+App.openSpotifyCredModal = function() {
+  document.getElementById('spotClientId').value      = ''
+  document.getElementById('spotClientSecret').value  = ''
+  document.getElementById('spotCredError').style.display = 'none'
+  document.getElementById('btnSpotConnect').disabled  = false
+  document.getElementById('btnSpotConnect').textContent = 'Conectar'
+  const m = document.getElementById('spotifyCredModal')
+  m.style.display = 'flex'
+  requestAnimationFrame(() => m.classList.add('modal-visible'))
+}
+
+App.closeSpotifyCredModal = function() {
+  const m = document.getElementById('spotifyCredModal')
+  m.classList.remove('modal-visible')
+  setTimeout(() => { m.style.display = 'none' }, 220)
+}
+
+App.openSpotifyDevLink = function() {
+  window.pywebview.api.open_url('https://developer.spotify.com/dashboard')
+}
+
+App.saveSpotifyCredentials = async function() {
+  const btn       = document.getElementById('btnSpotConnect')
+  const errEl     = document.getElementById('spotCredError')
+  const clientId  = document.getElementById('spotClientId').value.trim()
+  const secret    = document.getElementById('spotClientSecret').value.trim()
+
+  if (!clientId || !secret) {
+    errEl.textContent    = 'Preencha os dois campos.'
+    errEl.style.display  = 'block'
+    return
+  }
+
+  btn.disabled    = true
+  btn.textContent = '⏳ Verificando…'
+  errEl.style.display = 'none'
+
+  const r = await window.pywebview.api.save_spotify_credentials({
+    client_id:     clientId,
+    client_secret: secret,
+  })
+
+  btn.disabled    = false
+  btn.textContent = 'Conectar'
+
+  if (!r.ok) {
+    errEl.textContent   = r.error
+    errEl.style.display = 'block'
+    return
+  }
+
+  App.closeSpotifyCredModal()
+  document.getElementById('urlHint').textContent = '⏳ Carregando playlist Spotify…'
+  window.pywebview.api.get_spotify_playlist_info(App.spotifyUrl)
+}
+
+App.openSpotifyPreview = function(data) {
+  App.spotifyTracks = data.faixas
+  document.getElementById('spotPlaylistName').textContent =
+    data.playlist_nome + '  •  ' + data.faixas.length + ' faixas'
+
+  const list = document.getElementById('spotTrackList')
+  list.innerHTML = ''
+  data.faixas.forEach((faixa, i) => {
+    const item = document.createElement('div')
+    item.className = 'spot-track-item'
+    item.innerHTML = `
+      <label class="spot-track-label">
+        <input type="checkbox" class="spot-track-check" data-index="${i}" checked>
+        <span class="spot-track-num">${i + 1}.</span>
+        <span class="spot-track-titulo">${App._esc(faixa.titulo)}</span>
+        <span class="spot-track-artista">— ${App._esc(faixa.artista)}</span>
+        <span class="spot-track-dur">${App._esc(faixa.duracao)}</span>
+      </label>
+    `
+    item.querySelector('input').addEventListener('change', () => App.updateSpotDownloadCount())
+    list.appendChild(item)
+  })
+  App.updateSpotDownloadCount()
+
+  const modal = document.getElementById('spotifyPreviewModal')
+  modal.style.display = 'flex'
+  requestAnimationFrame(() => modal.classList.add('modal-visible'))
+}
+
+App.closeSpotifyPreview = function() {
+  const m = document.getElementById('spotifyPreviewModal')
+  m.classList.remove('modal-visible')
+  setTimeout(() => { m.style.display = 'none' }, 220)
+}
+
+App.spotSelectAll = function(checked) {
+  document.querySelectorAll('.spot-track-check').forEach(c => { c.checked = checked })
+  App.updateSpotDownloadCount()
+}
+
+App.updateSpotDownloadCount = function() {
+  const count = document.querySelectorAll('.spot-track-check:checked').length
+  document.getElementById('spotDownloadCount').textContent = count
+  document.getElementById('btnSpotDownload').disabled = count === 0
+}
+
+App.startSpotifyDownload = function() {
+  const formato   = document.querySelector('input[name="spotFormato"]:checked')?.value  || 'mp3'
+  const qualidade = document.querySelector('input[name="spotQualidade"]:checked')?.value || '320'
+  const organizar = document.getElementById('chkOrganizar').checked
+  const metadados = document.getElementById('chkMeta').checked
+  const pular     = document.getElementById('chkSkip').checked
+  const notificar = document.getElementById('chkNotify').checked
+
+  const selecionadas = []
+  document.querySelectorAll('.spot-track-check:checked').forEach(c => {
+    selecionadas.push(App.spotifyTracks[parseInt(c.dataset.index)])
+  })
+
+  App.closeSpotifyPreview()
+  document.getElementById('urlInput').value = ''
+
+  selecionadas.forEach(faixa => {
+    const query  = `ytsearch1:${faixa.titulo} ${faixa.artista}`
+    const params = {
+      url:              query,
+      tipo:             'musica',
+      formato,
+      qualidade,
+      organizar,
+      metadados,
+      pular_duplicados: pular,
+      notificar,
+      recorte:          false,
+      recorte_inicio:   '',
+      recorte_fim:      '',
+      fonte:            'Spotify',
+    }
+    App.queue.push({
+      id:     'q_' + Date.now() + '_' + Math.random().toString(36).slice(2),
+      url:    query,
+      titulo: `${faixa.titulo} — ${faixa.artista}`,
+      params,
+      status: 'aguardando',
+      pct:    0,
+      erro:   null,
+    })
+  })
+
+  App.renderQueue()
+  if (!App.queueRunning) App.processQueue()
 }
 
 /* ── Aguardar pywebview estar pronto ──────── */
@@ -608,6 +790,14 @@ App.onTipoChange = function() {
 
 App.detectUrlType = function(url) {
   if (!url || !url.trim()) return null
+
+  if (/open\.spotify\.com\/playlist\//i.test(url.trim())) {
+    return {
+      tipo: null,
+      bloqueados: [],
+      hint: '🎵 Playlist Spotify — clique em Baixar para importar',
+    }
+  }
 
   let hostname = ''
   try {
