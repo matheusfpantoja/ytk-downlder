@@ -302,6 +302,70 @@
   </div>
 </div>
 
+<!-- ── Modal: Configuração Spotify ── -->
+<div id="spotifyCredModal" class="modal-overlay" style="display:none"
+     onclick="if(event.target===this) App.closeSpotifyCredModal()">
+  <div class="modal-card">
+    <div class="modal-header">
+      <span class="modal-title">🎵 Conectar ao Spotify</span>
+      <button class="modal-close" onclick="App.closeSpotifyCredModal()">✕</button>
+    </div>
+    <p class="modal-desc">
+      Para importar playlists, você precisa de um App gratuito no Spotify Developer.
+    </p>
+    <a class="modal-link" onclick="App.openSpotifyDevLink()">Como criar um app →</a>
+    <div class="modal-field">
+      <label class="modal-field-label">Client ID</label>
+      <input type="text" id="spotClientId" class="input-url" placeholder="Cole o Client ID aqui">
+    </div>
+    <div class="modal-field">
+      <label class="modal-field-label">Client Secret</label>
+      <input type="password" id="spotClientSecret" class="input-url" placeholder="Cole o Client Secret aqui">
+    </div>
+    <div id="spotCredError" class="modal-error" style="display:none"></div>
+    <div class="modal-actions">
+      <button class="btn-ghost" onclick="App.closeSpotifyCredModal()">Cancelar</button>
+      <button class="btn-primary" id="btnSpotConnect" onclick="App.saveSpotifyCredentials()">Conectar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Modal: Preview de playlist Spotify ── -->
+<div id="spotifyPreviewModal" class="modal-overlay" style="display:none"
+     onclick="if(event.target===this) App.closeSpotifyPreview()">
+  <div class="modal-card modal-card-lg">
+    <div class="modal-header">
+      <span class="modal-title" id="spotPlaylistName">Carregando…</span>
+      <button class="modal-close" onclick="App.closeSpotifyPreview()">✕</button>
+    </div>
+    <div class="spot-format-row">
+      <span class="opt-label">Formato</span>
+      <div class="radio-group">
+        <label class="radio-pill"><input type="radio" name="spotFormato" value="mp3" checked> MP3</label>
+        <label class="radio-pill"><input type="radio" name="spotFormato" value="wav"> WAV</label>
+        <label class="radio-pill"><input type="radio" name="spotFormato" value="flac"> FLAC</label>
+      </div>
+      <span class="opt-label" style="margin-left:14px">Qualidade</span>
+      <div class="radio-group">
+        <label class="radio-pill"><input type="radio" name="spotQualidade" value="128"> 128</label>
+        <label class="radio-pill"><input type="radio" name="spotQualidade" value="192"> 192</label>
+        <label class="radio-pill"><input type="radio" name="spotQualidade" value="320" checked> 320</label>
+      </div>
+    </div>
+    <div class="spot-track-controls">
+      <button class="btn-ghost btn-ghost-sm" onclick="App.spotSelectAll(true)">Selecionar tudo</button>
+      <button class="btn-ghost btn-ghost-sm" onclick="App.spotSelectAll(false)">Desmarcar tudo</button>
+    </div>
+    <div id="spotTrackList" class="spot-track-list"></div>
+    <div class="modal-actions">
+      <button class="btn-ghost" onclick="App.closeSpotifyPreview()">Cancelar</button>
+      <button class="btn-primary" id="btnSpotDownload" onclick="App.startSpotifyDownload()">
+        Baixar <span id="spotDownloadCount">0</span> faixas →
+      </button>
+    </div>
+  </div>
+</div>
+
 <script src="app.js"></script>
 </body>
 </html>
