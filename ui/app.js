@@ -558,7 +558,7 @@ App.saveSpotifyCredentials = async function() {
   btn.textContent = 'Conectar'
 
   if (!r.ok) {
-    errEl.textContent   = r.error
+    errEl.textContent   = r.error || 'Erro desconhecido.'
     errEl.style.display = 'block'
     return
   }
@@ -624,7 +624,8 @@ App.startSpotifyDownload = function() {
 
   const selecionadas = []
   document.querySelectorAll('.spot-track-check:checked').forEach(c => {
-    selecionadas.push(App.spotifyTracks[parseInt(c.dataset.index)])
+    const faixa = App.spotifyTracks[parseInt(c.dataset.index)]
+    if (faixa) selecionadas.push(faixa)
   })
 
   App.closeSpotifyPreview()
@@ -793,8 +794,8 @@ App.detectUrlType = function(url) {
 
   if (/open\.spotify\.com\/playlist\//i.test(url.trim())) {
     return {
-      tipo: null,
-      bloqueados: [],
+      tipo: 'musica',
+      bloqueados: ['video', 'playlist'],
       hint: '🎵 Playlist Spotify — clique em Baixar para importar',
     }
   }
