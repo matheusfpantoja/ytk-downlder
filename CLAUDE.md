@@ -221,6 +221,51 @@ FFmpeg deve estar instalado separadamente (necessário para conversão de áudio
 
 ---
 
+## Fluxo de trabalho com Git (branches + PR)
+
+**Regra:** nunca commitar direto no `master`. Cada sessão de trabalho começa em uma branch nova.
+
+### Início de sessão
+```bash
+# Sempre partir do master atualizado
+git checkout master
+git pull origin master
+
+# Criar branch com nome descritivo
+git checkout -b feat/nome-da-feature
+# Exemplos: feat/spotify-import, fix/progress-bar, style/dark-mode
+```
+
+### Durante o trabalho
+```bash
+# Commitar normalmente na branch
+git add arquivo
+git commit -m "descrição do que foi feito"
+```
+
+### Finalizar e abrir PR
+```bash
+# Enviar branch para o GitHub
+git push origin feat/nome-da-feature
+
+# Criar o PR (gh CLI)
+gh pr create --title "título" --body "descrição"
+```
+
+### Prefixos de branch
+| Prefixo | Quando usar |
+|---------|------------|
+| `feat/` | nova funcionalidade |
+| `fix/` | correção de bug |
+| `style/` | mudanças visuais/CSS |
+| `refactor/` | reorganização de código sem mudar comportamento |
+| `chore/` | dependências, configs, arquivos de suporte |
+
+> **gh CLI** está instalado em `C:\Program Files\GitHub CLI\gh.exe`.
+> Se o comando `gh` não for reconhecido no terminal, adicione esse caminho ao PATH do Windows.
+
+---
+
 ## Como rodar em desenvolvimento
 
 ```bash
