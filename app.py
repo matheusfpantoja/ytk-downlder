@@ -10,6 +10,9 @@ import json
 import os
 import subprocess
 import sys
+import ssl
+import urllib.request
+import urllib.parse
 from datetime import datetime
 
 try:
@@ -34,7 +37,21 @@ def _notify(title, message):
 
 # ─── Caminhos ─────────────────────────────────────────────────
 
-PASTA_PADRAO  = os.path.join(os.path.expanduser("~"), "Músicas-YT")
+import winreg
+
+def _get_install_download_path():
+    """Lê a pasta de download escolhida pelo instalador (registro do Windows)."""
+    try:
+        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\YTK DOWNLDER")
+        value, _ = winreg.QueryValueEx(key, "DownloadPath")
+        winreg.CloseKey(key)
+        if value and os.path.isdir(os.path.dirname(value)):
+            return value
+    except Exception:
+        pass
+    return os.path.join(os.path.expanduser("~"), "Músicas-YT")
+
+PASTA_PADRAO = _get_install_download_path()
 HISTORICO_PATH = os.path.join(PASTA_PADRAO, ".historico.json")
 CONFIG_PATH    = os.path.join(PASTA_PADRAO, ".config.json")
 
@@ -140,7 +157,7 @@ class Api:
         return {
             "pasta":      self._short(self.pasta_destino),
             "pasta_full": self.pasta_destino,
-            "tema":       cfg.get("tema", "dark"),
+            "tema":       cfg.get("tema", "light"),
             "historico":  self.historico.itens[:100],
         }
 
@@ -376,6 +393,8 @@ class Api:
     def search_youtube(self, query, source="youtube"):
         if not query.strip():
             return []
+        if source == "mixcloud":
+            return self._search_mixcloud(query)
         prefix = "scsearch8" if source == "soundcloud" else "ytsearch8"
         try:
             with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "extract_flat": True}) as ydl:
@@ -387,6 +406,30 @@ class Api:
                     "url":     e.get("url") or e.get("webpage_url") or "",
                     "thumb":   e.get("thumbnail") or "",
                 } for e in (r.get("entries") or []) if e]
+        except Exception:
+            return []
+
+    def _search_mixcloud(self, query):
+        try:
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            params = urllib.parse.urlencode({"q": query, "type": "cloudcast", "limit": "8"})
+            url = f"https://api.mixcloud.com/search/?{params}"
+            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
+            with urllib.request.urlopen(req, timeout=10, context=ctx) as resp:
+                data = json.loads(resp.read())
+            results = []
+            for e in data.get("data") or []:
+                key = e.get("key", "")
+                results.append({
+                    "titulo":  (e.get("name") or "")[:60],
+                    "canal":   (e.get("user") or {}).get("name") or "",
+                    "duracao": self._fmt_dur(e.get("audio_length")),
+                    "url":     f"https://www.mixcloud.com{key}" if key else "",
+                    "thumb":   (e.get("pictures") or {}).get("medium") or "",
+                })
+            return results
         except Exception:
             return []
 
