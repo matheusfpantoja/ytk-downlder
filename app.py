@@ -3,10 +3,13 @@ YouTube Downloader v3.0 — PyWebView
 Backend Python puro + Interface Web moderna
 """
 
+# DEVE ser as primeiras linhas executadas — impede janelas infinitas no .exe (PyInstaller)
+import multiprocessing
+multiprocessing.freeze_support()
+
 import webview
 import yt_dlp
 import threading
-import multiprocessing
 import json
 import os
 import subprocess
@@ -457,7 +460,6 @@ class Api:
 # ─── Iniciar ──────────────────────────────────────────────────
 
 if __name__ == "__main__":
-    multiprocessing.freeze_support()
     api = Api()
 
     window = webview.create_window(
