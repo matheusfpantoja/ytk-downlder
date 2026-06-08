@@ -6,6 +6,7 @@ Backend Python puro + Interface Web moderna
 import webview
 import yt_dlp
 import threading
+import multiprocessing
 import json
 import os
 import subprocess
@@ -456,6 +457,7 @@ class Api:
 # ─── Iniciar ──────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    multiprocessing.freeze_support()
     api = Api()
 
     window = webview.create_window(
