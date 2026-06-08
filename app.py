@@ -126,6 +126,10 @@ class Api:
         threading.Thread(target=self._verificar_ytdlp, daemon=True).start()
 
     def _verificar_ytdlp(self):
+        # Quando empacotado como .exe, sys.executable aponta para o próprio app —
+        # chamar sys.executable -m pip abriria infinitas janelas. Pula a atualização.
+        if getattr(sys, "frozen", False):
+            return
         self._emit("log", {"msg": "Verificando atualizações do yt-dlp..."})
         try:
             result = subprocess.run(
