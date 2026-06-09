@@ -79,7 +79,7 @@ PyWebView abre janela → carrega ui/index.html
 - [x] Download de **vídeo** — MP4 (360p / 480p / 720p / 1080p)
 - [x] Download de **playlist** inteira
 - [x] Download via arquivo **.txt** com múltiplos links (prefixo `TXT:` no campo URL)
-- [x] **Busca** integrada no YouTube e SoundCloud (sem abrir navegador) — `ytsearch8:` / `scsearch8:`
+- [x] **Busca** integrada no YouTube, SoundCloud e Mixcloud (sem abrir navegador) — `ytsearch8:` / `scsearch8:` / API pública Mixcloud
 - [x] **Recorte** de trecho (início/fim em `mm:ss`)
 - [x] Metadados automáticos (artista, capa do álbum via FFmpegMetadata + EmbedThumbnail)
 - [x] Organização por pasta artista/canal
@@ -94,13 +94,15 @@ PyWebView abre janela → carrega ui/index.html
 - [x] **Drag & drop** de links do navegador (overlay visual ao arrastar)
 - [x] **Detecção automática de URL** — identifica tipo (música / vídeo / playlist) e bloqueia opções inválidas com hint visual
 - [x] Suporte a SoundCloud, Bandcamp, Vimeo e 1000+ sites (yt-dlp nativo)
+- [x] **Aba Funcionalidades** (`#tab-features`) — guia visual completo com todas as features organizadas em seções, grid de sites suportados e botão para modal com lista completa (+1000 sites)
+- [x] **Modal de sites suportados** (`#sitesModal`) — listagem expandida por categoria (vídeo, redes sociais, música, notícias, esportes, educação etc.)
 
 ---
 
 ## Funcionalidades pendentes (próximos passos)
 
 - [ ] Importar playlist do Spotify e buscar no YouTube (`spotdl`)
-- [ ] Topbar com título dinâmico (`#topbarTitle`) — JS já tem o override preparado mas o elemento não existe no HTML
+- [ ] Topbar com título dinâmico (`#topbarTitle`) — JS tem override em `App.tab` que atualiza o elemento, mas ele **não existe no HTML** (topbar está escondida via CSS `display: none !important`)
 
 ---
 
@@ -142,6 +144,7 @@ PyWebView abre janela → carrega ui/index.html
 - `_download_thread(url, params)` → roda em thread daemon; detecta prefixo `TXT:`
 - `_verificar_ytdlp()` → atualiza yt-dlp via pip ao iniciar (thread daemon)
 - `_notify(title, message)` → notificação do SO via plyer (falha silenciosamente)
+- `_search_mixcloud(query)` → busca no Mixcloud via API pública (`api.mixcloud.com/search`); SSL sem verificação por limitação local do Windows
 - `resource_path(rel)` → resolve caminhos em dev e em `.exe` (PyInstaller)
 - Constantes de caminho no topo: `PASTA_PADRAO`, `HISTORICO_PATH`, `CONFIG_PATH`
 
@@ -150,7 +153,8 @@ PyWebView abre janela → carrega ui/index.html
 - **Estado:** `App.tema`, `App.pastaFull`, `App.queue[]`, `App.queueRunning`, `App.queueActive`
 - `App.init()` → chamado pelo evento `pywebviewready`
 - `App.handle(event, data)` → recebe eventos do Python; atualiza card ativo da fila
-- `App.tab(name)` → troca de aba; atualiza `#topbarTitle` se existir
+- `App.tab(name)` → troca de aba; override no final do arquivo atualiza `#topbarTitle` se existir
+- `App.applyTheme(t)` → aplica tema; override atualiza `#themeLabel2` se existir
 - `App.download()` → cria item na fila com `unshift` (prioridade) e chama `processQueue()`
 - `App.addToQueue()` → adiciona URLs do campo (suporta múltiplas linhas) no final da fila
 - `App.processQueue()` → pega próximo `aguardando` e chama `start_download`
@@ -160,19 +164,23 @@ PyWebView abre janela → carrega ui/index.html
 - `App.detectUrlType(url)` → retorna `{tipo, bloqueados[], hint}` baseado no domínio/padrão da URL
 - `App.applyUrlDetection(resultado)` → bloqueia radios inválidos e mostra hint; `null` reseta
 - `App.onTipoChange()` → mostra/esconde `#audioOpts` / `#videoOpts`
+- `App.openSitesModal()` / `App.closeSitesModal(event)` → abre/fecha modal de sites suportados
 - `App._buildParams()` → lê todos os campos do formulário
 - `App._esc(str)` → escapa HTML para evitar XSS
 - `App._shortUrl(url)` → trunca URL para exibição na fila
 
 ### HTML (`index.html`)
-- Três seções `tab-panel`: `#tab-download`, `#tab-search`, `#tab-history`
+- **Quatro** seções `tab-panel`: `#tab-download`, `#tab-search`, `#tab-history`, `#tab-features`
+- **Nav sidebar** tem 4 botões: Download, Buscar, Histórico, Funcionalidades
+- **Sidebar search**: div clicável no topo da sidebar redireciona para `#tab-search` e foca `#searchInput`
 - **URL:** `#urlInput`, `#urlHint` (hint de detecção automática)
 - **Botões principais:** `#btnDownload`, `#btnAddQueue`
 - **Fila:** `#queueSection` (oculto por padrão), `#queueList`
-- **Pop-up:** `#downloadPopup`, `#popupIconWrap`, `#popupIcon`, `#popupTitle`, `#popupMsg`
-- **Sidebar footer:** `#folderPath`, `#themeBtn`, `#themeLabel`, `#themeLabel2`
+- **Pop-up conclusão:** `#downloadPopup`, `#popupIconWrap`, `#popupIcon`, `#popupTitle`, `#popupMsg`
+- **Modal sites:** `#sitesModal` com grid de sites por categoria; `App.openSitesModal()` / `App.closeSitesModal()`
+- **Sidebar footer:** `#folderPath`, `#themeBtn`, `#themeLabel`
 - **Drop overlay:** `#dropOverlay` (visível ao arrastar link sobre a janela)
-- Topbar (`#topbarTitle`) **não existe no HTML** — JS já tem o código preparado
+- Topbar (`#topbarTitle`) **não existe no HTML** — CSS a esconde com `display: none !important`, JS tem override preparado
 
 ---
 
@@ -203,7 +211,7 @@ FFmpeg deve estar instalado separadamente (necessário para conversão de áudio
 8. **`queueActive`**: é o `id` do item em andamento. `App.handle` usa esse ID para encontrar o card correto na fila.
 9. **Evento `log`**: o Python emite, mas o `App.handle` não tem `case 'log'` — cai no `default` do switch sem erro.
 10. **Detecção de URL**: `App.detectUrlType` retorna `null` para URL inválida. `App.applyUrlDetection(null)` reseta e bloqueia apenas "playlist".
-11. **Tema**: `data-tema` fica no `<html>`. O CSS atual é Grayscale Clean estático — o toggle persiste, mas o CSS não diferencia dark/light visualmente (trabalho futuro).
+11. **Tema**: `data-tema` fica no `<html>`. O CSS diferencia dark/light **apenas nos queue cards** (`[data-tema="dark"] .queue-card` → fundo `#1a1a1a`). O restante da UI permanece Grayscale Clean estático independente do tema.
 12. **plyer**: importado com `try/except` — se não instalado, `_plyer_notification = None` e `_notify()` retorna imediatamente sem erro.
 
 ---
