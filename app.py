@@ -1,3 +1,4 @@
+# teste de integração
 """
 YouTube Downloader v3.0 — PyWebView
 Backend Python puro + Interface Web moderna
@@ -12,6 +13,7 @@ import yt_dlp
 import threading
 import json
 import os
+import shutil
 import subprocess
 import sys
 import ssl
@@ -67,6 +69,14 @@ def resource_path(rel):
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), rel)
 
 
+def get_ffmpeg_path():
+    """Procura primeiro um ffmpeg empacotado junto do app; senão, cai no PATH do sistema."""
+    bundled = resource_path(os.path.join("bin", "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"))
+    if os.path.exists(bundled):
+        return bundled
+    return shutil.which("ffmpeg")  # pode retornar None
+
+
 # ─── Histórico ────────────────────────────────────────────────
 
 class Historico:
@@ -119,10 +129,14 @@ class Api:
         self._cancelar     = False
         self.pasta_destino = PASTA_PADRAO
         self._win          = None
+        self.ffmpeg_path   = None
         os.makedirs(self.pasta_destino, exist_ok=True)
 
     def set_window(self, w):
         self._win = w
+        self.ffmpeg_path = get_ffmpeg_path()
+        if not self.ffmpeg_path:
+            self._emit("log", {"msg": "⚠️ FFmpeg não encontrado nesta máquina. Baixe em https://www.gyan.dev/ffmpeg/builds/ (build 'essentials'), extraia e adicione a pasta 'bin' ao PATH do Windows. Sem isso, downloads de música e vídeo vão falhar."})
         threading.Thread(target=self._verificar_ytdlp, daemon=True).start()
 
     def _verificar_ytdlp(self):
@@ -273,6 +287,9 @@ class Api:
             self.baixando = False
 
     def _baixar_unico(self, url, params):
+        if not self.ffmpeg_path:
+            raise Exception("FFmpeg não está instalado nesta máquina. Veja o log para o link de instalação.")
+
         tipo = params.get("tipo", "musica")
 
         if params.get("pular_duplicados") and self.historico.has(url):
@@ -320,6 +337,9 @@ class Api:
             "quiet":          True,
             "no_warnings":    True,
         }
+
+        if self.ffmpeg_path:
+            opts["ffmpeg_location"] = os.path.dirname(self.ffmpeg_path)
 
         if tipo == "video":
             res = params.get("resolucao", "720").replace("p", "")
