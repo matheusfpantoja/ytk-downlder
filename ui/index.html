@@ -68,6 +68,7 @@
         <span class="dot" style="width:7px;height:7px;border-radius:50%;background:var(--gold);display:inline-block;box-shadow:0 0 5px var(--gold-glow)"></span>
         <span id="themeLabel">Tema claro</span>
       </button>
+      <button class="btn-ghost" onclick="App.openLogModal()">📄 &nbsp;Ver log completo</button>
       <div class="shortcuts-hint" title="Atalhos de teclado disponíveis">
         <span>⌨</span>
         <span>Ctrl+V baixar · Ctrl+F buscar</span>
@@ -110,23 +111,25 @@
       <div class="section-block">
         <div class="card-label">Configurações</div>
 
-        <div class="opt-row">
+        <div class="opt-row opt-row-tipo">
           <div class="opt-label">Tipo</div>
-          <div class="radio-group" id="tipoGroup">
-            <label class="radio-pill">
-              <input type="radio" name="tipo" value="musica" checked
-                onchange="App.onTipoChange()"> 🎵 Música
-            </label>
-            <label class="radio-pill">
-              <input type="radio" name="tipo" value="video"
-                onchange="App.onTipoChange()"> 🎬 Vídeo
-            </label>
-            <label class="radio-pill">
-              <input type="radio" name="tipo" value="playlist"
-                onchange="App.onTipoChange()"> 📋 Playlist
-            </label>
+          <div class="tipo-group-wrap">
+            <div id="urlHint" class="url-hint"></div>
+            <div class="radio-group" id="tipoGroup">
+              <label class="radio-pill">
+                <input type="radio" name="tipo" value="musica" checked
+                  onchange="App.onTipoChange()"> 🎵 Música
+              </label>
+              <label class="radio-pill">
+                <input type="radio" name="tipo" value="video"
+                  onchange="App.onTipoChange()"> 🎬 Vídeo
+              </label>
+              <label class="radio-pill">
+                <input type="radio" name="tipo" value="playlist"
+                  onchange="App.onTipoChange()"> 📋 Playlist
+              </label>
+            </div>
           </div>
-          <div id="urlHint" class="url-hint"></div>
         </div>
 
         <!-- Opções de áudio (default) -->
@@ -201,9 +204,6 @@
       <div class="btn-row">
         <button class="btn-primary" id="btnDownload" onclick="App.download()">
           <span id="btnLabel">⬇  Baixar agora</span>
-        </button>
-        <button class="btn-secondary" id="btnAddQueue" onclick="App.addToQueue()">
-          ＋ Adicionar à fila
         </button>
       </div>
 
@@ -614,6 +614,23 @@
       </div>
     </div>
     <button class="popup-btn" onclick="App.closeSitesModal()">Fechar</button>
+  </div>
+</div>
+
+<!-- Modal — log completo da sessão -->
+<div id="logModal" class="popup-overlay" style="display:none" onclick="App.closeLogModal(event)">
+  <div class="popup-card log-modal-card">
+    <div class="sites-modal-header">
+      <div class="sites-modal-title">Log completo</div>
+      <div class="sites-modal-sub">Histórico desta sessão — útil para diagnosticar erros</div>
+    </div>
+    <div class="sites-modal-body">
+      <pre id="logModalBody" class="log-modal-pre"></pre>
+    </div>
+    <div style="display:flex">
+      <button class="popup-btn" id="logCopyBtn" onclick="App.copyLog()" style="border-radius:0">📋 Copiar</button>
+      <button class="popup-btn" onclick="App.closeLogModal()" style="border-radius:0 0 14px 0">Fechar</button>
+    </div>
   </div>
 </div>
 
