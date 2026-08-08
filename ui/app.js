@@ -11,6 +11,7 @@ const App = {
   queue: [],
   queueRunning: false,
   queueActive: null,
+  logHistory: [],
 
   /* ══════════════════════════════════════════════════════
      INIT — chamado quando pywebview estiver pronto
@@ -85,6 +86,13 @@ const App = {
       case 'history_update':
         this.prependHistoryItem(data.item)
         break
+      case 'log': {
+        const time = new Date().toLocaleTimeString('pt-BR', { hour12: false })
+        this.logHistory.push(`[${time}] ${data.msg}`)
+        if (this.logHistory.length > 500) this.logHistory.shift()
+        this._refreshLogModalIfOpen()
+        break
+      }
     }
   },
 
@@ -173,24 +181,23 @@ const App = {
      DOWNLOAD
      ══════════════════════════════════════════════════════ */
   async download() {
-    const tipo = document.querySelector('input[name="tipo"]:checked')?.value
-    document.getElementById('audioOpts').style.display = tipo === 'video' ? 'none' : 'block'
-    document.getElementById('videoOpts').style.display = tipo === 'video' ? 'block' : 'none'
+    const raw  = document.getElementById('urlInput').value || ''
+    const urls = raw.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'))
+    if (!urls.length) return
 
-    const params = this._buildParams()
-    if (!params.url) return
+    const baseParams = this._buildParams()
+    urls.forEach(url => {
+      this.queue.push({
+        id:     'q_' + Date.now() + '_' + Math.random().toString(36).slice(2),
+        url,
+        titulo: this._shortUrl(url),
+        params: { ...baseParams, url },
+        status: 'aguardando',
+        pct:    0,
+        erro:   null,
+      })
+    })
 
-    const item = {
-      id:     'q_' + Date.now() + '_' + Math.random().toString(36).slice(2),
-      url:    params.url,
-      titulo: this._shortUrl(params.url),
-      params,
-      status: 'aguardando',
-      pct:    0,
-      erro:   null,
-    }
-
-    this.queue.unshift(item)
     document.getElementById('urlInput').value = ''
     this.renderQueue()
     if (!this.queueRunning) this.processQueue()
@@ -238,6 +245,40 @@ const App = {
     const m = document.getElementById('sitesModal')
     m.classList.remove('popup-visible')
     setTimeout(() => { m.style.display = 'none' }, 220)
+  },
+
+  openLogModal() {
+    this.renderLogModal()
+    const m = document.getElementById('logModal')
+    m.style.display = 'flex'
+    requestAnimationFrame(() => m.classList.add('popup-visible'))
+  },
+
+  closeLogModal(e) {
+    if (e && e.target !== document.getElementById('logModal')) return
+    const m = document.getElementById('logModal')
+    m.classList.remove('popup-visible')
+    setTimeout(() => { m.style.display = 'none' }, 220)
+  },
+
+  renderLogModal() {
+    const body = document.getElementById('logModalBody')
+    if (!body) return
+    body.textContent = this.logHistory.length ? this.logHistory.join('\n') : 'Nenhum log registrado ainda.'
+    body.scrollTop = body.scrollHeight
+  },
+
+  _refreshLogModalIfOpen() {
+    const m = document.getElementById('logModal')
+    if (m && m.style.display === 'flex') this.renderLogModal()
+  },
+
+  async copyLog() {
+    try {
+      await navigator.clipboard.writeText(this.logHistory.join('\n'))
+      const btn = document.getElementById('logCopyBtn')
+      if (btn) { const orig = btn.textContent; btn.textContent = '✅ Copiado!'; setTimeout(() => btn.textContent = orig, 1500) }
+    } catch (_) {}
   },
 
 
@@ -391,6 +432,9 @@ const App = {
     card.dataset.status = item.status
     const showBar  = item.status === 'baixando'
     const disabled = item.status === 'baixando' ? 'disabled' : ''
+    const detalhesBtn = item.status === 'erro'
+      ? `<button class="queue-details-btn" onclick="App.openLogModal()">Ver log completo</button>`
+      : ''
     card.innerHTML = `
       <div class="queue-icon">${icons[item.status] || '⏳'}</div>
       <div class="queue-info">
@@ -401,6 +445,7 @@ const App = {
         </div>
         <div class="queue-detalhe">${this._esc(item.erro || '')}</div>
       </div>
+      ${detalhesBtn}
       <button class="queue-remove" ${disabled}
         onclick="App.removeFromQueue('${this._esc(item.id)}')">✕</button>
     `
@@ -433,29 +478,6 @@ const App = {
   clearQueueDone() {
     this.queue = this.queue.filter(i => i.status === 'aguardando' || i.status === 'baixando')
     this.renderQueue()
-  },
-
-  addToQueue() {
-    const raw  = document.getElementById('urlInput').value || ''
-    const urls = raw.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'))
-    if (!urls.length) return
-
-    const baseParams = this._buildParams()
-    urls.forEach(url => {
-      this.queue.push({
-        id:     'q_' + Date.now() + '_' + Math.random().toString(36).slice(2),
-        url,
-        titulo: this._shortUrl(url),
-        params: { ...baseParams, url },
-        status: 'aguardando',
-        pct:    0,
-        erro:   null,
-      })
-    })
-
-    document.getElementById('urlInput').value = ''
-    this.renderQueue()
-    if (!this.queueRunning) this.processQueue()
   },
 
   async processQueue() {

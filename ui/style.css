@@ -1262,6 +1262,20 @@ body {
   cursor: not-allowed;
 }
 
+.queue-details-btn {
+  background: rgba(255,255,255,0.15);
+  border: 1px solid rgba(255,255,255,0.3);
+  color: #fff;
+  font-size: 10px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+
+.queue-details-btn:hover { background: rgba(255,255,255,0.25); }
+
 @keyframes fadeSlideIn {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
@@ -1471,6 +1485,17 @@ body {
   background: #ebebeb;
 }
 
+/* Modal de log */
+.log-modal-card { width: 560px !important; max-height: 78vh; }
+.log-modal-pre {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: #333;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.6;
+}
+
 /* ═══════════════════════════════════════════════════
    DARK MODE — [data-tema="dark"] na tag <html>
    ═══════════════════════════════════════════════════ */
@@ -1669,3 +1694,7 @@ body {
 [data-tema="dark"] .empty {
   color: #585858;
 }
+
+.opt-row-tipo { align-items: flex-start; }
+.tipo-group-wrap { display: flex; flex-direction: column; gap: 6px; }
+.tipo-group-wrap .url-hint { margin: 0; }
