@@ -243,8 +243,6 @@ class Api:
         return {"ok": False}
 
     def start_download(self, params):
-        if self.baixando:
-            return {"ok": False, "error": "Já há um download em andamento."}
         url = (params.get("url") or "").strip()
         if not url:
             return {"ok": False, "error": "Cole um link para baixar."}
@@ -427,13 +425,24 @@ class Api:
         try:
             with yt_dlp.YoutubeDL({"quiet": True, "no_warnings": True, "extract_flat": True}) as ydl:
                 r = ydl.extract_info(f"{prefix}:{query}", download=False)
-                return [{
-                    "titulo":  (e.get("title") or "")[:60],
-                    "canal":   e.get("channel") or e.get("uploader") or "",
-                    "duracao": self._fmt_dur(e.get("duration")),
-                    "url":     e.get("url") or e.get("webpage_url") or "",
-                    "thumb":   e.get("thumbnail") or "",
-                } for e in (r.get("entries") or []) if e]
+                results = []
+                for e in (r.get("entries") or []):
+                    if not e:
+                        continue
+                    url = e.get("url") or e.get("webpage_url") or ""
+                    # Extração "flat" do YouTube retorna só o ID do vídeo em "url"
+                    # (ex: "dQw4w9WgXcQ"), não a URL completa — sem isso o
+                    # download falha porque o yt-dlp não reconhece o link.
+                    if source == "youtube" and url and not url.startswith("http"):
+                        url = f"https://www.youtube.com/watch?v={url}"
+                    results.append({
+                        "titulo":  (e.get("title") or "")[:60],
+                        "canal":   e.get("channel") or e.get("uploader") or "",
+                        "duracao": self._fmt_dur(e.get("duration")),
+                        "url":     url,
+                        "thumb":   e.get("thumbnail") or "",
+                    })
+                return results
         except Exception:
             return []
 

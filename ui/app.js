@@ -124,6 +124,12 @@ const App = {
     await window.pywebview.api.save_config({ tema: this.tema })
   },
 
+  toggleSidebar() {
+    const app = document.querySelector('.app')
+    const collapsed = app.classList.toggle('sidebar-collapsed')
+    try { localStorage.setItem('sidebarCollapsed', collapsed ? '1' : '0') } catch (_) {}
+  },
+
   /* ══════════════════════════════════════════════════════
      PASTA
      ══════════════════════════════════════════════════════ */
@@ -247,8 +253,10 @@ const App = {
     setTimeout(() => { m.style.display = 'none' }, 220)
   },
 
-  openLogModal() {
+  openLogModal(isError) {
     this.renderLogModal()
+    const icon = document.getElementById('logModalIcon')
+    if (icon) icon.style.display = isError ? 'flex' : 'none'
     const m = document.getElementById('logModal')
     m.style.display = 'flex'
     requestAnimationFrame(() => m.classList.add('popup-visible'))
@@ -310,16 +318,33 @@ const App = {
     }
 
     status.textContent = results.length + ' resultados'
-    this.renderSearchResults(results)
+    this.renderSearchResults(results, source)
   },
 
-  renderSearchResults(results) {
+  renderSearchResults(results, source) {
     const list = document.getElementById('searchResults')
     list.innerHTML = ''
     results.forEach((r, i) => {
       const card = document.createElement('div')
       card.className = 'result-card'
       card.style.animationDelay = (i * 30) + 'ms'
+
+      // YouTube permite baixar áudio OU vídeo — oferece as duas opções
+      // explicitamente, sem depender do que está marcado na aba Download.
+      // SoundCloud/Mixcloud só têm áudio, então um único botão basta.
+      const acoes = source === 'youtube'
+        ? `
+          <div class="result-actions">
+            <button class="btn-down-sm" data-url="${this._esc(r.url)}" data-tipo="musica">🎵 Áudio</button>
+            <button class="btn-down-sm" data-url="${this._esc(r.url)}" data-tipo="video">🎬 Vídeo</button>
+          </div>
+        `
+        : `
+          <div class="result-actions">
+            <button class="btn-down-sm" data-url="${this._esc(r.url)}" data-tipo="musica">⬇ Baixar</button>
+          </div>
+        `
+
       card.innerHTML = `
         ${r.thumb
           ? `<img class="result-thumb" src="${r.thumb}" alt="" loading="lazy">`
@@ -332,18 +357,27 @@ const App = {
             ${r.duracao ? `<span class="dot">·</span><span>${r.duracao}</span>` : ''}
           </div>
         </div>
-        <button class="btn-down-sm" data-url="${this._esc(r.url)}">⬇ Baixar</button>
+        ${acoes}
       `
-      card.querySelector('button').addEventListener('click', (e) => {
-        this.downloadFromSearch(e.target.dataset.url)
+      card.querySelectorAll('button').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          this.downloadFromSearch(e.currentTarget.dataset.url, e.currentTarget.dataset.tipo)
+        })
       })
       list.appendChild(card)
     })
   },
 
-  downloadFromSearch(url) {
+  downloadFromSearch(url, tipo) {
     document.getElementById('urlInput').value = url
     this.tab('download')
+
+    if (tipo) {
+      const radio = document.querySelector(`input[name="tipo"][value="${tipo}"]`)
+      if (radio) radio.checked = true
+    }
+    this.applyUrlDetection(this.detectUrlType(url))
+
     this.download()
   },
 
@@ -430,11 +464,17 @@ const App = {
     card.className  = 'queue-card'
     card.dataset.id = item.id
     card.dataset.status = item.status
-    const showBar  = item.status === 'baixando'
-    const disabled = item.status === 'baixando' ? 'disabled' : ''
+    const showBar    = item.status === 'baixando'
+    const isBaixando = item.status === 'baixando'
     const detalhesBtn = item.status === 'erro'
-      ? `<button class="queue-details-btn" onclick="App.openLogModal()">Ver log completo</button>`
+      ? `<button class="queue-details-btn" onclick="App.openLogModal(true)">Ver log completo</button>`
       : ''
+    const cancelBtn = isBaixando
+      ? `<button class="queue-cancel-btn" onclick="App.cancelDownload()">Cancelar</button>`
+      : ''
+    const removeBtn = isBaixando
+      ? ''
+      : `<button class="queue-remove" onclick="App.removeFromQueue('${this._esc(item.id)}')">✕</button>`
     card.innerHTML = `
       <div class="queue-icon">${icons[item.status] || '⏳'}</div>
       <div class="queue-info">
@@ -446,8 +486,8 @@ const App = {
         <div class="queue-detalhe">${this._esc(item.erro || '')}</div>
       </div>
       ${detalhesBtn}
-      <button class="queue-remove" ${disabled}
-        onclick="App.removeFromQueue('${this._esc(item.id)}')">✕</button>
+      ${cancelBtn}
+      ${removeBtn}
     `
     return card
   },
@@ -473,6 +513,10 @@ const App = {
     if (!item || item.status === 'baixando') return
     this.queue = this.queue.filter(i => i.id !== id)
     this.renderQueue()
+  },
+
+  async cancelDownload() {
+    await window.pywebview.api.cancel_download()
   },
 
   clearQueueDone() {
@@ -672,8 +716,6 @@ App.detectUrlType = function(url) {
     const hints = []
     if (isPlaylist) {
       hints.push('📋 Playlist detectada — tipo alterado automaticamente')
-    } else {
-      hints.push('⚠️ Link n\xE3o reconhecido como playlist')
     }
     return { tipo: isPlaylist ? 'playlist' : null, bloqueados, hint: hints.join(' \xB7 ') }
   }
@@ -695,7 +737,6 @@ App.detectUrlType = function(url) {
     tipo = 'playlist'
   } else {
     bloqueados.push('playlist')
-    hints.push('⚠️ Link n\xE3o reconhecido como playlist')
   }
 
   return {
@@ -802,3 +843,11 @@ App.applyTheme = function(t) {
   const lbl2 = document.getElementById('themeLabel2')
   if (lbl2) lbl2.textContent = t === 'dark' ? 'Tema claro' : 'Tema escuro'
 }
+
+;(function () {
+  try {
+    if (localStorage.getItem('sidebarCollapsed') === '1') {
+      document.querySelector('.app')?.classList.add('sidebar-collapsed')
+    }
+  } catch (_) {}
+})()
