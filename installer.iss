@@ -8,13 +8,15 @@ OutputBaseFilename=YTK-DOWNLDER-Setup
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
+SetupIconFile=icon.ico
 
 [Files]
 Source: "dist\YTK DOWNLDER\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
+Source: "icon.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\YTK DOWNLDER"; Filename: "{app}\YTK DOWNLDER.exe"
-Name: "{commondesktop}\YTK DOWNLDER"; Filename: "{app}\YTK DOWNLDER.exe"
+Name: "{group}\YTK DOWNLDER"; Filename: "{app}\YTK DOWNLDER.exe"; IconFilename: "{app}\icon.ico"
+Name: "{commondesktop}\YTK DOWNLDER"; Filename: "{app}\YTK DOWNLDER.exe"; IconFilename: "{app}\icon.ico"
 
 [Run]
 Filename: "{app}\YTK DOWNLDER.exe"; Description: "Abrir YTK DOWNLDER"; Flags: nowait postinstall skipifsilent

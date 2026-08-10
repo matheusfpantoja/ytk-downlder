@@ -11,6 +11,7 @@ const App = {
   queue: [],
   queueRunning: false,
   queueActive: null,
+  logHistory: [],
 
   /* ══════════════════════════════════════════════════════
      INIT — chamado quando pywebview estiver pronto
@@ -85,6 +86,13 @@ const App = {
       case 'history_update':
         this.prependHistoryItem(data.item)
         break
+      case 'log': {
+        const time = new Date().toLocaleTimeString('pt-BR', { hour12: false })
+        this.logHistory.push(`[${time}] ${data.msg}`)
+        if (this.logHistory.length > 500) this.logHistory.shift()
+        this._refreshLogModalIfOpen()
+        break
+      }
     }
   },
 
@@ -114,6 +122,12 @@ const App = {
     this.tema = this.tema === 'dark' ? 'light' : 'dark'
     this.applyTheme(this.tema)
     await window.pywebview.api.save_config({ tema: this.tema })
+  },
+
+  toggleSidebar() {
+    const app = document.querySelector('.app')
+    const collapsed = app.classList.toggle('sidebar-collapsed')
+    try { localStorage.setItem('sidebarCollapsed', collapsed ? '1' : '0') } catch (_) {}
   },
 
   /* ══════════════════════════════════════════════════════
@@ -173,24 +187,23 @@ const App = {
      DOWNLOAD
      ══════════════════════════════════════════════════════ */
   async download() {
-    const tipo = document.querySelector('input[name="tipo"]:checked')?.value
-    document.getElementById('audioOpts').style.display = tipo === 'video' ? 'none' : 'block'
-    document.getElementById('videoOpts').style.display = tipo === 'video' ? 'block' : 'none'
+    const raw  = document.getElementById('urlInput').value || ''
+    const urls = raw.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'))
+    if (!urls.length) return
 
-    const params = this._buildParams()
-    if (!params.url) return
+    const baseParams = this._buildParams()
+    urls.forEach(url => {
+      this.queue.push({
+        id:     'q_' + Date.now() + '_' + Math.random().toString(36).slice(2),
+        url,
+        titulo: this._shortUrl(url),
+        params: { ...baseParams, url },
+        status: 'aguardando',
+        pct:    0,
+        erro:   null,
+      })
+    })
 
-    const item = {
-      id:     'q_' + Date.now() + '_' + Math.random().toString(36).slice(2),
-      url:    params.url,
-      titulo: this._shortUrl(params.url),
-      params,
-      status: 'aguardando',
-      pct:    0,
-      erro:   null,
-    }
-
-    this.queue.unshift(item)
     document.getElementById('urlInput').value = ''
     this.renderQueue()
     if (!this.queueRunning) this.processQueue()
@@ -240,6 +253,42 @@ const App = {
     setTimeout(() => { m.style.display = 'none' }, 220)
   },
 
+  openLogModal(isError) {
+    this.renderLogModal()
+    const icon = document.getElementById('logModalIcon')
+    if (icon) icon.style.display = isError ? 'flex' : 'none'
+    const m = document.getElementById('logModal')
+    m.style.display = 'flex'
+    requestAnimationFrame(() => m.classList.add('popup-visible'))
+  },
+
+  closeLogModal(e) {
+    if (e && e.target !== document.getElementById('logModal')) return
+    const m = document.getElementById('logModal')
+    m.classList.remove('popup-visible')
+    setTimeout(() => { m.style.display = 'none' }, 220)
+  },
+
+  renderLogModal() {
+    const body = document.getElementById('logModalBody')
+    if (!body) return
+    body.textContent = this.logHistory.length ? this.logHistory.join('\n') : 'Nenhum log registrado ainda.'
+    body.scrollTop = body.scrollHeight
+  },
+
+  _refreshLogModalIfOpen() {
+    const m = document.getElementById('logModal')
+    if (m && m.style.display === 'flex') this.renderLogModal()
+  },
+
+  async copyLog() {
+    try {
+      await navigator.clipboard.writeText(this.logHistory.join('\n'))
+      const btn = document.getElementById('logCopyBtn')
+      if (btn) { const orig = btn.textContent; btn.textContent = '✅ Copiado!'; setTimeout(() => btn.textContent = orig, 1500) }
+    } catch (_) {}
+  },
+
 
   /* ══════════════════════════════════════════════════════
      BUSCA
@@ -269,16 +318,33 @@ const App = {
     }
 
     status.textContent = results.length + ' resultados'
-    this.renderSearchResults(results)
+    this.renderSearchResults(results, source)
   },
 
-  renderSearchResults(results) {
+  renderSearchResults(results, source) {
     const list = document.getElementById('searchResults')
     list.innerHTML = ''
     results.forEach((r, i) => {
       const card = document.createElement('div')
       card.className = 'result-card'
       card.style.animationDelay = (i * 30) + 'ms'
+
+      // YouTube permite baixar áudio OU vídeo — oferece as duas opções
+      // explicitamente, sem depender do que está marcado na aba Download.
+      // SoundCloud/Mixcloud só têm áudio, então um único botão basta.
+      const acoes = source === 'youtube'
+        ? `
+          <div class="result-actions">
+            <button class="btn-down-sm" data-url="${this._esc(r.url)}" data-tipo="musica">🎵 Áudio</button>
+            <button class="btn-down-sm" data-url="${this._esc(r.url)}" data-tipo="video">🎬 Vídeo</button>
+          </div>
+        `
+        : `
+          <div class="result-actions">
+            <button class="btn-down-sm" data-url="${this._esc(r.url)}" data-tipo="musica">⬇ Baixar</button>
+          </div>
+        `
+
       card.innerHTML = `
         ${r.thumb
           ? `<img class="result-thumb" src="${r.thumb}" alt="" loading="lazy">`
@@ -291,18 +357,27 @@ const App = {
             ${r.duracao ? `<span class="dot">·</span><span>${r.duracao}</span>` : ''}
           </div>
         </div>
-        <button class="btn-down-sm" data-url="${this._esc(r.url)}">⬇ Baixar</button>
+        ${acoes}
       `
-      card.querySelector('button').addEventListener('click', (e) => {
-        this.downloadFromSearch(e.target.dataset.url)
+      card.querySelectorAll('button').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          this.downloadFromSearch(e.currentTarget.dataset.url, e.currentTarget.dataset.tipo)
+        })
       })
       list.appendChild(card)
     })
   },
 
-  downloadFromSearch(url) {
+  downloadFromSearch(url, tipo) {
     document.getElementById('urlInput').value = url
     this.tab('download')
+
+    if (tipo) {
+      const radio = document.querySelector(`input[name="tipo"][value="${tipo}"]`)
+      if (radio) radio.checked = true
+    }
+    this.applyUrlDetection(this.detectUrlType(url))
+
     this.download()
   },
 
@@ -389,8 +464,17 @@ const App = {
     card.className  = 'queue-card'
     card.dataset.id = item.id
     card.dataset.status = item.status
-    const showBar  = item.status === 'baixando'
-    const disabled = item.status === 'baixando' ? 'disabled' : ''
+    const showBar    = item.status === 'baixando'
+    const isBaixando = item.status === 'baixando'
+    const detalhesBtn = item.status === 'erro'
+      ? `<button class="queue-details-btn" onclick="App.openLogModal(true)">Ver log completo</button>`
+      : ''
+    const cancelBtn = isBaixando
+      ? `<button class="queue-cancel-btn" onclick="App.cancelDownload()">Cancelar</button>`
+      : ''
+    const removeBtn = isBaixando
+      ? ''
+      : `<button class="queue-remove" onclick="App.removeFromQueue('${this._esc(item.id)}')">✕</button>`
     card.innerHTML = `
       <div class="queue-icon">${icons[item.status] || '⏳'}</div>
       <div class="queue-info">
@@ -401,8 +485,9 @@ const App = {
         </div>
         <div class="queue-detalhe">${this._esc(item.erro || '')}</div>
       </div>
-      <button class="queue-remove" ${disabled}
-        onclick="App.removeFromQueue('${this._esc(item.id)}')">✕</button>
+      ${detalhesBtn}
+      ${cancelBtn}
+      ${removeBtn}
     `
     return card
   },
@@ -430,32 +515,13 @@ const App = {
     this.renderQueue()
   },
 
+  async cancelDownload() {
+    await window.pywebview.api.cancel_download()
+  },
+
   clearQueueDone() {
     this.queue = this.queue.filter(i => i.status === 'aguardando' || i.status === 'baixando')
     this.renderQueue()
-  },
-
-  addToQueue() {
-    const raw  = document.getElementById('urlInput').value || ''
-    const urls = raw.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'))
-    if (!urls.length) return
-
-    const baseParams = this._buildParams()
-    urls.forEach(url => {
-      this.queue.push({
-        id:     'q_' + Date.now() + '_' + Math.random().toString(36).slice(2),
-        url,
-        titulo: this._shortUrl(url),
-        params: { ...baseParams, url },
-        status: 'aguardando',
-        pct:    0,
-        erro:   null,
-      })
-    })
-
-    document.getElementById('urlInput').value = ''
-    this.renderQueue()
-    if (!this.queueRunning) this.processQueue()
   },
 
   async processQueue() {
@@ -650,8 +716,6 @@ App.detectUrlType = function(url) {
     const hints = []
     if (isPlaylist) {
       hints.push('📋 Playlist detectada — tipo alterado automaticamente')
-    } else {
-      hints.push('⚠️ Link n\xE3o reconhecido como playlist')
     }
     return { tipo: isPlaylist ? 'playlist' : null, bloqueados, hint: hints.join(' \xB7 ') }
   }
@@ -673,7 +737,6 @@ App.detectUrlType = function(url) {
     tipo = 'playlist'
   } else {
     bloqueados.push('playlist')
-    hints.push('⚠️ Link n\xE3o reconhecido como playlist')
   }
 
   return {
@@ -780,3 +843,11 @@ App.applyTheme = function(t) {
   const lbl2 = document.getElementById('themeLabel2')
   if (lbl2) lbl2.textContent = t === 'dark' ? 'Tema claro' : 'Tema escuro'
 }
+
+;(function () {
+  try {
+    if (localStorage.getItem('sidebarCollapsed') === '1') {
+      document.querySelector('.app')?.classList.add('sidebar-collapsed')
+    }
+  } catch (_) {}
+})()

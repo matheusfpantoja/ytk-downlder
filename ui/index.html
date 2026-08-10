@@ -17,23 +17,9 @@
     <!-- Logo -->
     <div class="logo">
       <div class="logo-mark">
-        <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
-          <path d="M3 2.5L13 8L3 13.5V2.5Z"/>
-        </svg>
+        <img src="img/logo-icon.png" alt="YTK" class="logo-mark-img">
       </div>
-      <div class="logo-name">
-        <div class="logo-ytk">YTK</div>
-        <div class="logo-sub">Downlder</div>
-      </div>
-    </div>
-
-    <!-- Busca rápida -->
-    <div class="sidebar-search">
-      <div class="search-inner" onclick="App.tab('search'); document.getElementById('searchInput').focus()">
-        <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" width="14" height="14" style="stroke:#ffffff;fill:none;flex-shrink:0"><circle cx="7" cy="7" r="4.5" stroke="#ffffff" stroke-width="1.5"/><line x1="10.5" y1="10.5" x2="14" y2="14" stroke="#ffffff" stroke-width="1.5" stroke-linecap="round"/></svg>
-        <input type="text" placeholder="Buscar música, artista..." readonly
-          style="cursor:pointer">
-      </div>
+      <img src="img/logo-full.png" alt="YTK DOWNLDER" class="logo-full-img">
     </div>
 
     <!-- Nav -->
@@ -68,6 +54,7 @@
         <span class="dot" style="width:7px;height:7px;border-radius:50%;background:var(--gold);display:inline-block;box-shadow:0 0 5px var(--gold-glow)"></span>
         <span id="themeLabel">Tema claro</span>
       </button>
+      <button class="btn-ghost" onclick="App.openLogModal()">📄 &nbsp;Ver log completo</button>
       <div class="shortcuts-hint" title="Atalhos de teclado disponíveis">
         <span>⌨</span>
         <span>Ctrl+V baixar · Ctrl+F buscar</span>
@@ -76,6 +63,12 @@
       </div>
     </div>
   </aside>
+
+  <button class="sidebar-toggle" onclick="App.toggleSidebar()" id="sidebarToggle" title="Recolher barra lateral">
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M15 6l-6 6 6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+    </svg>
+  </button>
 
   <!-- ═══════════════ MAIN ═══════════════ -->
   <main class="main">
@@ -96,11 +89,7 @@
           <input id="urlInput" type="text" class="input-url"
             placeholder="Cole o link (YouTube, SoundCloud, Bandcamp, Vimeo...)"
             onkeydown="if(event.key==='Enter') App.download()">
-          <button class="btn-icon" onclick="App.loadTxt()" title="Carregar .txt com links">
-            <svg viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="#939393">
-              <path d="M1.5 3A1.5 1.5 0 0 0 0 4.5v8A1.5 1.5 0 0 0 1.5 14h13a1.5 1.5 0 0 0 1.5-1.5V6.5A1.5 1.5 0 0 0 14.5 5H7.621a1.5 1.5 0 0 1-1.06-.44L5.44 3.44A1.5 1.5 0 0 0 4.38 3H1.5z"/>
-            </svg>
-          </button>
+          <button class="btn-icon" onclick="App.loadTxt()" title="Carregar .txt com links">📂</button>
         </div>
       </div>
 
@@ -110,23 +99,25 @@
       <div class="section-block">
         <div class="card-label">Configurações</div>
 
-        <div class="opt-row">
+        <div class="opt-row opt-row-tipo">
           <div class="opt-label">Tipo</div>
-          <div class="radio-group" id="tipoGroup">
-            <label class="radio-pill">
-              <input type="radio" name="tipo" value="musica" checked
-                onchange="App.onTipoChange()"> 🎵 Música
-            </label>
-            <label class="radio-pill">
-              <input type="radio" name="tipo" value="video"
-                onchange="App.onTipoChange()"> 🎬 Vídeo
-            </label>
-            <label class="radio-pill">
-              <input type="radio" name="tipo" value="playlist"
-                onchange="App.onTipoChange()"> 📋 Playlist
-            </label>
+          <div class="tipo-group-wrap">
+            <div id="urlHint" class="url-hint"></div>
+            <div class="radio-group" id="tipoGroup">
+              <label class="radio-pill">
+                <input type="radio" name="tipo" value="musica" checked
+                  onchange="App.onTipoChange()"> 🎵 Música
+              </label>
+              <label class="radio-pill">
+                <input type="radio" name="tipo" value="video"
+                  onchange="App.onTipoChange()"> 🎬 Vídeo
+              </label>
+              <label class="radio-pill">
+                <input type="radio" name="tipo" value="playlist"
+                  onchange="App.onTipoChange()"> 📋 Playlist
+              </label>
+            </div>
           </div>
-          <div id="urlHint" class="url-hint"></div>
         </div>
 
         <!-- Opções de áudio (default) -->
@@ -201,9 +192,6 @@
       <div class="btn-row">
         <button class="btn-primary" id="btnDownload" onclick="App.download()">
           <span id="btnLabel">⬇  Baixar agora</span>
-        </button>
-        <button class="btn-secondary" id="btnAddQueue" onclick="App.addToQueue()">
-          ＋ Adicionar à fila
         </button>
       </div>
 
@@ -614,6 +602,32 @@
       </div>
     </div>
     <button class="popup-btn" onclick="App.closeSitesModal()">Fechar</button>
+  </div>
+</div>
+
+<!-- Modal — log completo da sessão -->
+<div id="logModal" class="popup-overlay" style="display:none" onclick="App.closeLogModal(event)">
+  <div class="popup-card log-modal-card">
+    <div class="popup-icon-wrap log-icon-error" id="logModalIcon" style="display:none">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <line x1="18" y1="6" x2="6" y2="18" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+        <line x1="6" y1="6" x2="18" y2="18" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="sites-modal-header">
+      <div class="sites-modal-title">Log completo</div>
+      <div class="sites-modal-sub">Histórico desta sessão — útil para diagnosticar erros</div>
+    </div>
+    <div class="sites-modal-body">
+      <pre id="logModalBody" class="log-modal-pre"></pre>
+    </div>
+    <div class="log-modal-actions">
+      <button class="popup-btn" id="logCopyBtn" onclick="App.copyLog()" style="border-radius:0">📋 Copiar</button>
+      <button class="popup-btn log-close-btn" onclick="App.closeLogModal()" style="border-radius:0 0 18px 0">
+        <span class="log-close-icon">✕</span>
+        Fechar
+      </button>
+    </div>
   </div>
 </div>
 
