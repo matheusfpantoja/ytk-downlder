@@ -10,9 +10,11 @@ multiprocessing.freeze_support()
 
 import webview
 import yt_dlp
+from yt_dlp.utils import DownloadCancelled
 import threading
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -130,6 +132,7 @@ class Api:
         self.pasta_destino = PASTA_PADRAO
         self._win          = None
         self.ffmpeg_path   = None
+        self._playlist_status = ""
         os.makedirs(self.pasta_destino, exist_ok=True)
 
     def set_window(self, w):
@@ -275,6 +278,10 @@ class Api:
                 msg = titulo_download if titulo_download else "Seu arquivo foi salvo com sucesso."
                 _notify("Download concluído", msg)
 
+        except DownloadCancelled:
+            self._emit("download_complete", {"ok": False, "error": "Cancelado pelo usuário."})
+            self._emit("log",    {"msg": "⏹ Download cancelado."})
+            self._emit("status", {"msg": "⏹ Cancelado"})
         except Exception as e:
             self._emit("download_complete", {"ok": False, "error": str(e)})
             self._emit("log",    {"msg": f"❌ Erro: {e}"})
@@ -288,42 +295,81 @@ class Api:
         if not self.ffmpeg_path:
             raise Exception("FFmpeg não está instalado nesta máquina. Veja o log para o link de instalação.")
 
-        tipo = params.get("tipo", "musica")
+        is_playlist = params.get("playlist", False)
 
-        if params.get("pular_duplicados") and self.historico.has(url):
+        if not is_playlist and params.get("pular_duplicados") and self.historico.has(url):
             self._emit("log", {"msg": f"⏭ Já baixado: {url[:45]}…"})
             return ""
 
         opts = self._build_opts(params)
 
+        if is_playlist:
+            list_opts = dict(opts)
+            list_opts["extract_flat"] = True
+            with yt_dlp.YoutubeDL(list_opts) as ydl_list:
+                info = ydl_list.extract_info(url, download=False)
+
+            entries = [e for e in (info.get("entries") or []) if e]
+            total = len(entries)
+            self._emit("log", {"msg": f"📋 Playlist: {info.get('title','?')} ({total} itens)"})
+
+            sucesso, falha, pulados = 0, 0, 0
+            for i, entry in enumerate(entries):
+                eurl = entry.get("url") or entry.get("webpage_url") or ""
+                if eurl and not eurl.startswith("http"):
+                    eurl = f"https://www.youtube.com/watch?v={eurl}"
+                if not eurl:
+                    continue
+                # Remove "list=" da URL do item — sem isso, o yt-dlp pode
+                # entender a URL de UMA música como "baixe a playlist inteira
+                # de novo", já que o parâmetro da playlist original continua
+                # colado na URL de cada item.
+                eurl = re.sub(r'([&?])list=[^&]*', '', eurl).rstrip('&?')
+
+                if params.get("pular_duplicados") and self.historico.has(eurl):
+                    pulados += 1
+                    self._emit("log", {"msg": f"  ⏭ Já baixado: {(entry.get('title') or eurl)[:45]}…"})
+                    continue
+
+                self._playlist_status = f"Item {i+1} de {total}"
+                self._emit("status", {"msg": f"Baixando {i+1} de {total}…"})
+                titulo_preview = entry.get("title") or ""
+                if titulo_preview:
+                    self._emit("progress", {"pct": 0, "titulo": titulo_preview[:52], "detalhe": ""})
+
+                item_opts = self._build_opts(params)
+                item_opts["noplaylist"] = True
+                try:
+                    with yt_dlp.YoutubeDL(item_opts) as ydl2:
+                        self._pos_download(ydl2.extract_info(eurl, download=True), params)
+                    sucesso += 1
+                except Exception as e:
+                    falha += 1
+                    self._emit("log", {"msg": f"  ⚠ {e}"})
+
+            self._playlist_status = ""
+            resumo = f"✅ Playlist concluída: {sucesso} baixadas"
+            if pulados: resumo += f", {pulados} puladas"
+            if falha:   resumo += f", {falha} com erro"
+            self._emit("log", {"msg": resumo})
+            return info.get("title", "")
+
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(url, download=False)
-
-            if "entries" in info and tipo == "playlist":
-                entries = [e for e in info.get("entries", []) if e]
-                total = len(entries)
-                self._emit("log", {"msg": f"📋 Playlist: {info.get('title','?')} ({total} itens)"})
-                for i, entry in enumerate(entries):
-                    self._emit("status", {"msg": f"Baixando {i+1} de {total}…"})
-                    eurl = entry.get("webpage_url") or entry.get("url", "")
-                    if eurl:
-                        try:
-                            with yt_dlp.YoutubeDL(self._build_opts(params)) as ydl2:
-                                self._pos_download(ydl2.extract_info(eurl, download=True), params)
-                        except Exception as e:
-                            self._emit("log", {"msg": f"  ⚠ {e}"})
-                return info.get("title", "")
-
-            info = ydl.extract_info(url, download=True)
+            titulo_preview = (info or {}).get("title", "")
+            if titulo_preview:
+                self._emit("progress", {"pct": 0, "titulo": titulo_preview[:52], "detalhe": ""})
+            info = ydl.process_ie_result(info, download=True)
             self._pos_download(info, params)
             return info.get("title", "") if info else ""
 
     def _build_opts(self, params):
-        tipo      = params.get("tipo", "musica")
-        fmt       = params.get("formato", "mp3")
-        qualidade = params.get("qualidade", "192")
-        organizar = params.get("organizar", True)
-        metadados = params.get("metadados", True)
+        tipo        = params.get("tipo", "musica")
+        is_playlist = params.get("playlist", False)
+        fmt         = params.get("formato", "mp3")
+        qualidade   = params.get("qualidade", "192")
+        organizar   = params.get("organizar", True)
+        metadados   = params.get("metadados", True)
 
         tmpl   = "%(channel)s/%(title)s.%(ext)s" if organizar else "%(title)s.%(ext)s"
         output = os.path.join(self.pasta_destino, tmpl)
@@ -331,7 +377,7 @@ class Api:
         opts = {
             "outtmpl":        output,
             "progress_hooks": [self._hook],
-            "noplaylist":     tipo != "playlist",
+            "noplaylist":     not is_playlist,
             "quiet":          True,
             "no_warnings":    True,
         }
@@ -355,7 +401,7 @@ class Api:
                 opts["writethumbnail"] = True
                 opts["postprocessors"].append({"key": "EmbedThumbnail"})
 
-        if params.get("recorte"):
+        if params.get("recorte") and not is_playlist:
             pp = []
             if params.get("recorte_inicio"):
                 pp.extend(["-ss", self._t2s(params["recorte_inicio"])])
@@ -368,7 +414,7 @@ class Api:
 
     def _hook(self, d):
         if self._cancelar:
-            raise Exception("Download cancelado pelo usuário.")
+            raise DownloadCancelled("Download cancelado pelo usuário.")
         if d["status"] == "downloading":
             total   = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
             baixado = d.get("downloaded_bytes", 0)
@@ -377,6 +423,8 @@ class Api:
             pct     = baixado / total if total else 0
 
             parts = []
+            if self._playlist_status:
+                parts.append(self._playlist_status)
             if total:    parts.append(f"{int(pct*100)}%")
             if vel:      parts.append(f"{vel/1048576:.1f} MB/s")
             if eta:      parts.append(f"{eta}s restantes")

@@ -1760,3 +1760,49 @@ body {
   gap: 4px;
   flex-shrink: 0;
 }
+
+.info-icon-wrap {
+  position: relative;
+  display: inline-flex;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.info-icon-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 15px;
+  color: #939393;
+  padding: 0;
+  line-height: 1;
+}
+.info-icon-btn:hover {
+  color: #0781fc;
+}
+.info-tip {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #232323;
+  color: #fff;
+  font-size: 12px;
+  padding: 8px 12px;
+  border-radius: var(--r-sm, 10px);
+  white-space: nowrap;
+  z-index: 50;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.18);
+}
+.info-tip.visible {
+  display: block;
+}
+.info-tip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: #232323;
+}

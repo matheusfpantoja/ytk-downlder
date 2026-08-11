@@ -49,6 +49,7 @@ const App = {
         if (!this.queueActive) break
         const item = this.queue.find(i => i.id === this.queueActive)
         if (item) item.pct = data.pct || 0
+        if (item && data.titulo) item.titulo = data.titulo.slice(0, 52)
         const card = document.querySelector(`.queue-card[data-id="${this.queueActive}"]`)
         if (card) {
           const bar     = card.querySelector('.queue-bar-fill')
@@ -179,6 +180,7 @@ const App = {
       recorte:          document.getElementById('trimCheck').checked,
       recorte_inicio:   document.getElementById('trimStart').value.trim(),
       recorte_fim:      document.getElementById('trimEnd').value.trim(),
+      playlist:         document.getElementById('chkPlaylist')?.checked || false,
     }
     return params
   },
@@ -187,26 +189,32 @@ const App = {
      DOWNLOAD
      ══════════════════════════════════════════════════════ */
   async download() {
-    const raw  = document.getElementById('urlInput').value || ''
-    const urls = raw.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'))
-    if (!urls.length) return
+    try {
+      const raw  = document.getElementById('urlInput').value || ''
+      const urls = raw.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'))
+      if (!urls.length) return
 
-    const baseParams = this._buildParams()
-    urls.forEach(url => {
-      this.queue.push({
-        id:     'q_' + Date.now() + '_' + Math.random().toString(36).slice(2),
-        url,
-        titulo: this._shortUrl(url),
-        params: { ...baseParams, url },
-        status: 'aguardando',
-        pct:    0,
-        erro:   null,
+      const baseParams = this._buildParams()
+      urls.forEach(url => {
+        this.queue.push({
+          id:     'q_' + Date.now() + '_' + Math.random().toString(36).slice(2),
+          url,
+          titulo: this._shortUrl(url),
+          params: { ...baseParams, url },
+          status: 'aguardando',
+          pct:    0,
+          erro:   null,
+        })
       })
-    })
 
-    document.getElementById('urlInput').value = ''
-    this.renderQueue()
-    if (!this.queueRunning) this.processQueue()
+      document.getElementById('urlInput').value = ''
+      this.renderQueue()
+      if (!this.queueRunning) this.processQueue()
+    } catch (e) {
+      const time = new Date().toLocaleTimeString('pt-BR', { hour12: false })
+      this.logHistory.push(`[${time}] ❌ Exceção em download(): ${e?.stack || e}`)
+      this._refreshLogModalIfOpen()
+    }
   },
 
 
@@ -493,9 +501,9 @@ const App = {
   },
 
   _queueMeta(params) {
-    if (params.tipo === 'video')    return `🎬 ${params.resolucao || '720'}p`
-    if (params.tipo === 'playlist') return `📋 Playlist · ${(params.formato || 'mp3').toUpperCase()} ${params.qualidade || '192'}kbps`
-    return `🎵 ${(params.formato || 'mp3').toUpperCase()} · ${params.qualidade || '192'}kbps`
+    const prefix = params.playlist ? '📋 Playlist · ' : ''
+    if (params.tipo === 'video') return `${prefix}🎬 ${params.resolucao || '720'}p`
+    return `${prefix}🎵 ${(params.formato || 'mp3').toUpperCase()} · ${params.qualidade || '192'}kbps`
   },
 
   _shortUrl(url) {
@@ -537,10 +545,23 @@ const App = {
     item.status = 'baixando'
     this.renderQueue()
 
-    const r = await window.pywebview.api.start_download(item.params)
-    if (!r.ok) {
+    try {
+      const r = await window.pywebview.api.start_download(item.params)
+      if (!r.ok) {
+        item.status = 'erro'
+        item.erro   = r.error || 'Erro ao iniciar download'
+        const time = new Date().toLocaleTimeString('pt-BR', { hour12: false })
+        this.logHistory.push(`[${time}] ❌ Falha ao iniciar: ${item.erro}`)
+        this.queueActive = null
+        this.renderQueue()
+        this.processQueue()
+      }
+    } catch (e) {
       item.status = 'erro'
-      item.erro   = r.error || 'Erro ao iniciar download'
+      item.erro   = 'Erro inesperado ao iniciar download: ' + (e?.message || e)
+      const time = new Date().toLocaleTimeString('pt-BR', { hour12: false })
+      this.logHistory.push(`[${time}] ❌ Exceção em processQueue: ${e?.stack || e}`)
+      this._refreshLogModalIfOpen()
       this.queueActive = null
       this.renderQueue()
       this.processQueue()
@@ -680,6 +701,20 @@ document.addEventListener('keydown', async (e) => {
 
 /* ── Extras para v3 UI ─────────────────────────────── */
 
+App.toggleInfoTip = function(e, id) {
+  e.stopPropagation()
+  const tip = document.getElementById(id)
+  if (!tip) return
+  const jaVisivel = tip.classList.contains('visible')
+  document.querySelectorAll('.info-tip.visible').forEach(t => t.classList.remove('visible'))
+  if (!jaVisivel) tip.classList.add('visible')
+}
+
+// Fecha qualquer balão aberto ao clicar fora dele
+document.addEventListener('click', () => {
+  document.querySelectorAll('.info-tip.visible').forEach(t => t.classList.remove('visible'))
+})
+
 App.onTipoChange = function() {
   const tipo = document.querySelector('input[name="tipo"]:checked')?.value
   document.getElementById('audioOpts').style.display = tipo === 'video' ? 'none' : 'block'
@@ -711,13 +746,9 @@ App.detectUrlType = function(url) {
   const isKnown     = isAudioOnly || ALL_TYPES.some(d => hostname === d || hostname.endsWith('.' + d))
 
   if (!isKnown) {
-    // Domínio desconhecido mas ainda validamos playlist
-    const bloqueados = isPlaylist ? [] : ['playlist']
     const hints = []
-    if (isPlaylist) {
-      hints.push('📋 Playlist detectada — tipo alterado automaticamente')
-    }
-    return { tipo: isPlaylist ? 'playlist' : null, bloqueados, hint: hints.join(' \xB7 ') }
+    if (isPlaylist) hints.push('📋 Playlist detectada — marcada automaticamente')
+    return { tipo: null, bloqueados: [], isPlaylist, hint: hints.join(' \xB7 ') }
   }
 
   const hints = []
@@ -733,52 +764,35 @@ App.detectUrlType = function(url) {
   }
 
   if (isPlaylist) {
-    hints.push('📋 Playlist detectada — tipo alterado automaticamente')
-    tipo = 'playlist'
-  } else {
-    bloqueados.push('playlist')
+    hints.push('📋 Playlist detectada — marcada automaticamente')
   }
 
-  return {
-    tipo,
-    bloqueados,
-    hint: hints.join(' \xB7 ')
-  }
+  return { tipo, bloqueados, isPlaylist, hint: hints.join(' \xB7 ') }
 }
 
 App.applyUrlDetection = function(resultado) {
   const hintEl = document.getElementById('urlHint')
+  const playlistChk = document.getElementById('chkPlaylist')
 
-  // Restaurar todos os radio buttons
   document.querySelectorAll('input[name="tipo"]').forEach(r => {
     r.closest('label').style.opacity = ''
     r.closest('label').style.pointerEvents = ''
   })
 
   if (!resultado) {
-    // Campo vazio: bloquear "playlist" (não faz sentido sem URL)
-    const playlistRadio = document.querySelector('input[name="tipo"][value="playlist"]')
-    if (playlistRadio) {
-      playlistRadio.closest('label').style.opacity = '0.35'
-      playlistRadio.closest('label').style.pointerEvents = 'none'
-      if (playlistRadio.checked) {
-        const musica = document.querySelector('input[name="tipo"][value="musica"]')
-        if (musica) musica.checked = true
-      }
-    }
     if (hintEl) hintEl.textContent = ''
+    if (playlistChk) playlistChk.checked = false
+    this.onPlaylistChange()
     this.onTipoChange()
     return
   }
 
-  // Bloquear tipos inválidos
   if (resultado.bloqueados && resultado.bloqueados.length) {
     resultado.bloqueados.forEach(val => {
       const radio = document.querySelector('input[name="tipo"][value="' + val + '"]')
       if (radio) {
         radio.closest('label').style.opacity = '0.35'
         radio.closest('label').style.pointerEvents = 'none'
-        // Se estava selecionado, trocar para "musica"
         if (radio.checked) {
           const musica = document.querySelector('input[name="tipo"][value="musica"]')
           if (musica) musica.checked = true
@@ -787,16 +801,31 @@ App.applyUrlDetection = function(resultado) {
     })
   }
 
-  // Selecionar tipo automaticamente
   if (resultado.tipo) {
     const radio = document.querySelector('input[name="tipo"][value="' + resultado.tipo + '"]')
     if (radio) radio.checked = true
   }
 
-  // Mostrar hint
+  if (playlistChk) playlistChk.checked = !!resultado.isPlaylist
+
   if (hintEl) hintEl.textContent = resultado.hint || ''
 
+  this.onPlaylistChange()
   this.onTipoChange()
+}
+
+App.onPlaylistChange = function() {
+  const on = document.getElementById('chkPlaylist')?.checked
+  const trimCheck = document.getElementById('trimCheck')
+  const trimRow = trimCheck ? trimCheck.closest('.opt-row') : null
+  if (trimCheck) {
+    trimCheck.disabled = !!on
+    if (on) {
+      trimCheck.checked = false
+      this.toggleTrim()
+    }
+  }
+  if (trimRow) trimRow.style.opacity = on ? '0.4' : ''
 }
 
 // Listener de detecção no campo URL

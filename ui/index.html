@@ -112,11 +112,25 @@
                 <input type="radio" name="tipo" value="video"
                   onchange="App.onTipoChange()"> 🎬 Vídeo
               </label>
-              <label class="radio-pill">
-                <input type="radio" name="tipo" value="playlist"
-                  onchange="App.onTipoChange()"> 📋 Playlist
-              </label>
             </div>
+          </div>
+        </div>
+
+        <div class="opt-row">
+          <div class="opt-label">Playlist</div>
+          <div class="checks-col">
+            <label class="checkbox-pill">
+              <input type="checkbox" id="chkPlaylist" onchange="App.onPlaylistChange()">
+              📋 Baixar playlist inteira
+            </label>
+            <span class="info-icon-wrap">
+              <button type="button" class="info-icon-btn"
+                onclick="App.toggleInfoTip(event, 'tipPlaylist')"
+                aria-label="Mais informações sobre playlist">ⓘ</button>
+              <div class="info-tip" id="tipPlaylist">
+                Usa o formato/qualidade escolhido acima
+              </div>
+            </span>
           </div>
         </div>
 
