@@ -11,6 +11,7 @@ const App = {
   queue: [],
   queueRunning: false,
   queueActive: null,
+  subtitleActive: false,
   logHistory: [],
 
   /* ══════════════════════════════════════════════════════
@@ -46,6 +47,14 @@ const App = {
   handle(event, data) {
     switch (event) {
       case 'progress': {
+        if (this.subtitleActive) {
+          const bar = document.getElementById('subtitleProgBar')
+          const detalhe = document.getElementById('subtitleProgDetalhe')
+          const titulo = document.getElementById('subtitleProgTitulo')
+          if (bar) bar.style.width = Math.round((data.pct || 0) * 100) + '%'
+          if (detalhe) detalhe.textContent = data.detalhe || ''
+          if (data.titulo && titulo) titulo.textContent = data.titulo.slice(0, 52)
+        }
         if (!this.queueActive) break
         const item = this.queue.find(i => i.id === this.queueActive)
         if (item) item.pct = data.pct || 0
@@ -62,6 +71,10 @@ const App = {
         break
       }
       case 'status': {
+        if (this.subtitleActive) {
+          const detalhe = document.getElementById('subtitleProgDetalhe')
+          if (detalhe) detalhe.textContent = data.msg || ''
+        }
         if (!this.queueActive) break
         const card = document.querySelector(`.queue-card[data-id="${this.queueActive}"]`)
         if (card) {
@@ -82,19 +95,22 @@ const App = {
           this.renderQueue()
           this.processQueue()
         }
-        {
-          const statusEl = document.getElementById('subtitleStatus')
+        if (this.subtitleActive) {
+          const card = document.getElementById('subtitleProgressCard')
+          const icon = document.getElementById('subtitleProgIcon')
+          const barTrack = document.getElementById('subtitleProgBarTrack')
+          const bar = document.getElementById('subtitleProgBar')
+          const detalhe = document.getElementById('subtitleProgDetalhe')
           const btn = document.getElementById('btnSubtitle')
-          if (statusEl && statusEl.style.display !== 'none' && btn && btn.disabled) {
-            if (data.ok) {
-              statusEl.className = 'subtitle-status ok'
-              statusEl.textContent = '✅ Concluído! Vídeo e legenda salvos na pasta de downloads.'
-            } else {
-              statusEl.className = 'subtitle-status err'
-              statusEl.textContent = '❌ ' + (data.error || 'Erro desconhecido.')
-            }
-            btn.disabled = false
-          }
+          if (card) card.dataset.status = data.ok ? 'concluido' : 'erro'
+          if (icon) icon.textContent = data.ok ? '✅' : '❌'
+          if (bar) bar.style.width = data.ok ? '100%' : (bar.style.width || '0%')
+          if (barTrack) barTrack.style.display = data.ok ? 'none' : 'block'
+          if (detalhe) detalhe.textContent = data.ok
+            ? 'Concluído! Arquivos salvos na pasta de downloads.'
+            : (data.error || 'Erro desconhecido.')
+          if (btn) btn.disabled = false
+          this.subtitleActive = false
         }
         break
       }
@@ -605,14 +621,26 @@ const App = {
     const url = (document.getElementById('subtitleUrl').value || '').trim()
     if (!url) { alert('Cole uma URL primeiro.'); return; }
     const mode = document.querySelector('input[name="subtitleMode"]:checked').value
-    const statusEl = document.getElementById('subtitleStatus')
     const btn = document.getElementById('btnSubtitle')
 
-    statusEl.className = 'subtitle-status'
-    statusEl.style.display = 'block'
-    statusEl.textContent = mode === 'whisper'
-      ? 'Baixando vídeo e transcrevendo com Whisper… isso pode levar alguns minutos.'
-      : 'Baixando vídeo e legenda…'
+    this.subtitleActive = true
+    const wrap = document.getElementById('subtitleProgressWrap')
+    const card = document.getElementById('subtitleProgressCard')
+    const icon = document.getElementById('subtitleProgIcon')
+    const titulo = document.getElementById('subtitleProgTitulo')
+    const meta = document.getElementById('subtitleProgMeta')
+    const barTrack = document.getElementById('subtitleProgBarTrack')
+    const bar = document.getElementById('subtitleProgBar')
+    const detalhe = document.getElementById('subtitleProgDetalhe')
+
+    if (wrap) wrap.style.display = 'block'
+    if (card) card.dataset.status = 'baixando'
+    if (icon) icon.textContent = '⬇'
+    if (titulo) titulo.textContent = 'Preparando…'
+    if (meta) meta.textContent = mode === 'whisper' ? '🤖 Whisper (IA)' : '💬 Legenda nativa'
+    if (barTrack) barTrack.style.display = 'block'
+    if (bar) bar.style.width = '0%'
+    if (detalhe) detalhe.textContent = ''
     btn.disabled = true
 
     try {
@@ -625,17 +653,19 @@ const App = {
         const lang  = document.querySelector('input[name="whisperLang"]:checked').value
         res = await window.pywebview.api.transcribe_whisper(url, lang, model)
       }
-      // O resultado real chega via App.handle('download_complete')
-      // Aqui só confirmamos que a thread foi disparada
       if (!res.ok) {
-        statusEl.className = 'subtitle-status err'
-        statusEl.textContent = '❌ ' + (res.error || 'Erro desconhecido.')
+        if (card) card.dataset.status = 'erro'
+        if (icon) icon.textContent = '❌'
+        if (detalhe) detalhe.textContent = res.error || 'Erro desconhecido.'
         btn.disabled = false
+        this.subtitleActive = false
       }
     } catch (e) {
-      statusEl.className = 'subtitle-status err'
-      statusEl.textContent = '❌ Erro ao iniciar: ' + e.message
+      if (card) card.dataset.status = 'erro'
+      if (icon) icon.textContent = '❌'
+      if (detalhe) detalhe.textContent = 'Erro ao iniciar: ' + e.message
       btn.disabled = false
+      this.subtitleActive = false
     }
   },
 }

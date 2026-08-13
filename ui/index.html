@@ -623,8 +623,20 @@
         🤖 <strong>Primeira execução:</strong> o modelo será baixado automaticamente (75 MB a 3 GB). Requer <code>pip install openai-whisper</code>.
       </div>
 
-      <!-- Status do download -->
-      <div id="subtitleStatus" style="display:none" class="subtitle-status"></div>
+      <!-- Progresso — reaproveita o mesmo componente visual da fila de Download -->
+      <div id="subtitleProgressWrap" style="display:none; margin-top:18px">
+        <div class="queue-card" id="subtitleProgressCard" data-status="baixando">
+          <div class="queue-icon" id="subtitleProgIcon">⬇</div>
+          <div class="queue-info">
+            <div class="queue-titulo" id="subtitleProgTitulo">Preparando…</div>
+            <div class="queue-meta" id="subtitleProgMeta"></div>
+            <div class="queue-bar-track" id="subtitleProgBarTrack">
+              <div class="queue-bar-fill" id="subtitleProgBar" style="width:0%"></div>
+            </div>
+            <div class="queue-detalhe" id="subtitleProgDetalhe"></div>
+          </div>
+        </div>
+      </div>
 
     </section>
 

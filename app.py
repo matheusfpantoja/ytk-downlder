@@ -86,6 +86,15 @@ def get_ffmpeg_path():
     return shutil.which("ffmpeg")  # pode retornar None
 
 
+# Reduz risco de erro 429 (Too Many Requests) do YouTube, especialmente
+# em downloads de legenda, que fazem uma requisição HTTP extra.
+YTDLP_SLEEP_OPTS = {
+    "sleep_interval": 1,
+    "max_sleep_interval": 3,
+    "sleep_interval_subtitles": 2,
+}
+
+
 # ─── Histórico ────────────────────────────────────────────────
 
 class Historico:
@@ -250,6 +259,7 @@ class Api:
         import threading
         def _run():
             try:
+                self._emit('log', {'msg': f'💬 Baixando vídeo + legenda nativa ({lang})…'})
                 pasta = str(PASTA_PADRAO)
                 opts = {
                     'outtmpl': os.path.join(pasta, '%(uploader)s', '%(title)s.%(ext)s'),
@@ -263,23 +273,25 @@ class Api:
                     'progress_hooks': [self._hook],
                     'quiet': True,
                     'no_warnings': True,
+                    **YTDLP_SLEEP_OPTS,
                 }
                 self._cancelar = False
                 with yt_dlp.YoutubeDL(opts) as ydl:
                     info = ydl.extract_info(url, download=True)
                     titulo = info.get('title', url)
+                arquivo = ''
+                if info.get('requested_downloads'):
+                    arquivo = info['requested_downloads'][0].get('filepath', '')
+                if not arquivo:
+                    arquivo = os.path.join(pasta, info.get('uploader', 'Unknown'), f"{titulo}.mp4")
+                self.historico.add(titulo, url, 'SRT', lang.upper(), arquivo)
                 self._emit('download_complete', {'ok': True})
-                self._emit('history_update', {
-                    'item': {
-                        'url': url,
-                        'titulo': titulo,
-                        'tipo': 'legenda-nativa',
-                        'data': __import__('datetime').datetime.now().strftime('%d/%m/%Y %H:%M'),
-                    }
-                })
+                self._emit('log', {'msg': f'✅ Legenda baixada: {titulo}'})
+                self._emit('history_update', {'item': self.historico.itens[0]})
             except Exception as e:
                 if not self._cancelar:
                     self._emit('download_complete', {'ok': False, 'error': str(e)})
+                    self._emit('log', {'msg': f'❌ Erro na legenda ({lang}): {e}'})
         t = threading.Thread(target=_run, daemon=True)
         t.start()
         return {'ok': True}
@@ -290,11 +302,12 @@ class Api:
         def _run():
             if not WHISPER_OK:
                 self._emit('download_complete', {'ok': False, 'error': 'openai-whisper não está instalado. Rode: pip install openai-whisper'})
+                self._emit('log', {'msg': '❌ Whisper não instalado (pip install openai-whisper)'})
                 return
             tmp_dir = tempfile.mkdtemp(prefix='ytk_whisper_')
             try:
-                # 1. Baixar vídeo em mp4
                 self._cancelar = False
+                self._emit('log', {'msg': f'🤖 Baixando vídeo para transcrição Whisper ({model_name})…'})
                 pasta = str(PASTA_PADRAO)
                 outtmpl = os.path.join(tmp_dir, '%(title)s.%(ext)s')
                 opts_video = {
@@ -305,20 +318,19 @@ class Api:
                     'progress_hooks': [self._hook],
                     'quiet': True,
                     'no_warnings': True,
+                    **YTDLP_SLEEP_OPTS,
                 }
                 with yt_dlp.YoutubeDL(opts_video) as ydl:
                     info = ydl.extract_info(url, download=True)
                     titulo = info.get('title', url)
-                # Localizar arquivo de vídeo baixado
                 video_files = [f for f in os.listdir(tmp_dir) if f.endswith('.mp4')]
                 if not video_files:
                     raise FileNotFoundError('Arquivo de vídeo não encontrado após download.')
                 video_path = os.path.join(tmp_dir, video_files[0])
-                # 2. Transcrever com Whisper
-                self._emit('status', {'msg': f'Transcrevendo com Whisper ({model_name})...'})
+                self._emit('status', {'msg': f'Transcrevendo com Whisper ({model_name})…'})
+                self._emit('log', {'msg': f'🤖 Transcrevendo com Whisper ({model_name})…'})
                 model = _whisper.load_model(model_name)
                 result = model.transcribe(video_path, language=lang if lang != 'auto' else None)
-                # 3. Gerar SRT
                 def _srt_time(seconds):
                     h = int(seconds // 3600)
                     m = int((seconds % 3600) // 60)
@@ -332,7 +344,6 @@ class Api:
                     srt_lines.append(seg['text'].strip())
                     srt_lines.append('')
                 srt_content = '\n'.join(srt_lines)
-                # 4. Mover vídeo e salvar SRT na pasta final
                 artista_pasta = os.path.join(pasta, info.get('uploader', 'Unknown'))
                 os.makedirs(artista_pasta, exist_ok=True)
                 nome_base = os.path.splitext(video_files[0])[0]
@@ -341,18 +352,14 @@ class Api:
                 shutil.move(video_path, destino_video)
                 with open(srt_path, 'w', encoding='utf-8') as f:
                     f.write(srt_content)
+                self.historico.add(titulo, url, 'SRT (Whisper)', model_name, destino_video)
                 self._emit('download_complete', {'ok': True})
-                self._emit('history_update', {
-                    'item': {
-                        'url': url,
-                        'titulo': titulo,
-                        'tipo': 'whisper-' + model_name,
-                        'data': __import__('datetime').datetime.now().strftime('%d/%m/%Y %H:%M'),
-                    }
-                })
+                self._emit('log', {'msg': f'✅ Transcrição concluída: {titulo}'})
+                self._emit('history_update', {'item': self.historico.itens[0]})
             except Exception as e:
                 if not self._cancelar:
                     self._emit('download_complete', {'ok': False, 'error': str(e)})
+                    self._emit('log', {'msg': f'❌ Erro na transcrição Whisper: {e}'})
             finally:
                 shutil.rmtree(tmp_dir, ignore_errors=True)
         t = threading.Thread(target=_run, daemon=True)
@@ -501,6 +508,7 @@ class Api:
             "noplaylist":     not is_playlist,
             "quiet":          True,
             "no_warnings":    True,
+            **YTDLP_SLEEP_OPTS,
         }
 
         if self.ffmpeg_path:
