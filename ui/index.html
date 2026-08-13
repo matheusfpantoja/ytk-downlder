@@ -41,6 +41,10 @@
       <button class="nav-btn" data-tab="features" onclick="App.tab('features')">
         <span class="icon">✦</span> Funcionalidades
       </button>
+
+      <button class="nav-btn" data-tab="subtitle" onclick="App.tab('subtitle')">
+        <span class="icon">💬</span> Vídeo/Legenda
+      </button>
     </nav>
 
     <!-- Footer -->
@@ -510,6 +514,117 @@
           Ver todos os +1000 sites suportados →
         </button>
       </div>
+
+    </section>
+
+    <!-- ── TAB: VÍDEO/LEGENDA ── -->
+    <section class="tab-panel" id="tab-subtitle">
+
+      <div class="page-header">
+        <div class="page-eyebrow">Legenda</div>
+        <h1>Vídeo / Legenda</h1>
+        <p>Baixe vídeos com legendas nativas ou gere legendas com IA (Whisper)</p>
+      </div>
+
+      <!-- URL -->
+      <div class="section-block">
+        <div class="url-row">
+          <input id="subtitleUrl" type="text" class="input-url"
+            placeholder="Cole o link do vídeo (YouTube, Vimeo...)"
+            onkeydown="if(event.key==='Enter') App.downloadSubtitle()">
+        </div>
+      </div>
+
+      <hr class="section-divider">
+
+      <!-- Configurações -->
+      <div class="section-block">
+
+        <!-- Modo -->
+        <div class="opt-row">
+          <div class="opt-label">Modo</div>
+          <div class="radio-group">
+            <label class="radio-pill">
+              <input type="radio" name="subtitleMode" value="native" checked
+                onchange="App.onSubtitleModeChange()"> 💬 Legenda nativa
+            </label>
+            <label class="radio-pill">
+              <input type="radio" name="subtitleMode" value="whisper"
+                onchange="App.onSubtitleModeChange()"> 🤖 Whisper (IA)
+            </label>
+          </div>
+        </div>
+
+        <!-- Opções — Legenda nativa -->
+        <div id="subtitleNativeOpts">
+          <div class="opt-row">
+            <div class="opt-label">Idioma</div>
+            <div class="radio-group">
+              <label class="radio-pill"><input type="radio" name="subLang" value="pt" checked> PT</label>
+              <label class="radio-pill"><input type="radio" name="subLang" value="en"> EN</label>
+              <label class="radio-pill"><input type="radio" name="subLang" value="es"> ES</label>
+              <label class="radio-pill"><input type="radio" name="subLang" value="fr"> FR</label>
+              <label class="radio-pill"><input type="radio" name="subLang" value="de"> DE</label>
+              <label class="radio-pill"><input type="radio" name="subLang" value="ja"> JA</label>
+              <label class="radio-pill"><input type="radio" name="subLang" value="zh"> ZH</label>
+              <label class="radio-pill"><input type="radio" name="subLang" value="it"> IT</label>
+              <label class="radio-pill"><input type="radio" name="subLang" value="ko"> KO</label>
+              <label class="radio-pill"><input type="radio" name="subLang" value="ru"> RU</label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Opções — Whisper -->
+        <div id="subtitleWhisperOpts" style="display:none">
+          <div class="opt-row">
+            <div class="opt-label">Modelo</div>
+            <div class="radio-group">
+              <label class="radio-pill"><input type="radio" name="whisperModel" value="tiny"> tiny ~75MB</label>
+              <label class="radio-pill"><input type="radio" name="whisperModel" value="base" checked> base ~150MB</label>
+              <label class="radio-pill"><input type="radio" name="whisperModel" value="small"> small ~470MB</label>
+              <label class="radio-pill"><input type="radio" name="whisperModel" value="medium"> medium ~1.5GB</label>
+              <label class="radio-pill"><input type="radio" name="whisperModel" value="large"> large ~3GB</label>
+            </div>
+          </div>
+          <div class="opt-row">
+            <div class="opt-label">Idioma</div>
+            <div class="radio-group">
+              <label class="radio-pill"><input type="radio" name="whisperLang" value="pt" checked> PT</label>
+              <label class="radio-pill"><input type="radio" name="whisperLang" value="en"> EN</label>
+              <label class="radio-pill"><input type="radio" name="whisperLang" value="es"> ES</label>
+              <label class="radio-pill"><input type="radio" name="whisperLang" value="fr"> FR</label>
+              <label class="radio-pill"><input type="radio" name="whisperLang" value="de"> DE</label>
+              <label class="radio-pill"><input type="radio" name="whisperLang" value="ja"> JA</label>
+              <label class="radio-pill"><input type="radio" name="whisperLang" value="zh"> ZH</label>
+              <label class="radio-pill"><input type="radio" name="whisperLang" value="it"> IT</label>
+              <label class="radio-pill"><input type="radio" name="whisperLang" value="ko"> KO</label>
+              <label class="radio-pill"><input type="radio" name="whisperLang" value="ru"> RU</label>
+              <label class="radio-pill"><input type="radio" name="whisperLang" value="auto"> 🔍 Auto</label>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <hr class="section-divider">
+
+      <!-- Botão -->
+      <div class="btn-row">
+        <button class="btn-primary" id="btnSubtitle" onclick="App.downloadSubtitle()">
+          ⬇  Baixar vídeo + legenda
+        </button>
+      </div>
+
+      <!-- Info contextual (troca conforme o modo) -->
+      <div id="subtitleNativeInfo" class="subtitle-info-hint">
+        💬 Só funciona se o vídeo já tiver legenda disponível. O arquivo .srt é salvo na mesma pasta do vídeo.
+      </div>
+      <div id="subtitleWhisperInfo" class="subtitle-info-hint" style="display:none">
+        🤖 <strong>Primeira execução:</strong> o modelo será baixado automaticamente (75 MB a 3 GB). Requer <code>pip install openai-whisper</code>.
+      </div>
+
+      <!-- Status do download -->
+      <div id="subtitleStatus" style="display:none" class="subtitle-status"></div>
 
     </section>
 

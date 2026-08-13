@@ -82,6 +82,20 @@ const App = {
           this.renderQueue()
           this.processQueue()
         }
+        {
+          const statusEl = document.getElementById('subtitleStatus')
+          const btn = document.getElementById('btnSubtitle')
+          if (statusEl && statusEl.style.display !== 'none' && btn && btn.disabled) {
+            if (data.ok) {
+              statusEl.className = 'subtitle-status ok'
+              statusEl.textContent = '✅ Concluído! Vídeo e legenda salvos na pasta de downloads.'
+            } else {
+              statusEl.className = 'subtitle-status err'
+              statusEl.textContent = '❌ ' + (data.error || 'Erro desconhecido.')
+            }
+            btn.disabled = false
+          }
+        }
         break
       }
       case 'history_update':
@@ -577,6 +591,52 @@ const App = {
       .replace(/</g,'&lt;')
       .replace(/>/g,'&gt;')
       .replace(/"/g,'&quot;')
+  },
+
+  onSubtitleModeChange() {
+    const mode = document.querySelector('input[name="subtitleMode"]:checked').value
+    document.getElementById('subtitleNativeOpts').style.display  = mode === 'native'  ? '' : 'none'
+    document.getElementById('subtitleWhisperOpts').style.display = mode === 'whisper' ? '' : 'none'
+    document.getElementById('subtitleNativeInfo').style.display  = mode === 'native'  ? '' : 'none'
+    document.getElementById('subtitleWhisperInfo').style.display = mode === 'whisper' ? '' : 'none'
+  },
+
+  async downloadSubtitle() {
+    const url = (document.getElementById('subtitleUrl').value || '').trim()
+    if (!url) { alert('Cole uma URL primeiro.'); return; }
+    const mode = document.querySelector('input[name="subtitleMode"]:checked').value
+    const statusEl = document.getElementById('subtitleStatus')
+    const btn = document.getElementById('btnSubtitle')
+
+    statusEl.className = 'subtitle-status'
+    statusEl.style.display = 'block'
+    statusEl.textContent = mode === 'whisper'
+      ? 'Baixando vídeo e transcrevendo com Whisper… isso pode levar alguns minutos.'
+      : 'Baixando vídeo e legenda…'
+    btn.disabled = true
+
+    try {
+      let res
+      if (mode === 'native') {
+        const lang = document.querySelector('input[name="subLang"]:checked').value
+        res = await window.pywebview.api.get_subtitles(url, lang, 'srt')
+      } else {
+        const model = document.querySelector('input[name="whisperModel"]:checked').value
+        const lang  = document.querySelector('input[name="whisperLang"]:checked').value
+        res = await window.pywebview.api.transcribe_whisper(url, lang, model)
+      }
+      // O resultado real chega via App.handle('download_complete')
+      // Aqui só confirmamos que a thread foi disparada
+      if (!res.ok) {
+        statusEl.className = 'subtitle-status err'
+        statusEl.textContent = '❌ ' + (res.error || 'Erro desconhecido.')
+        btn.disabled = false
+      }
+    } catch (e) {
+      statusEl.className = 'subtitle-status err'
+      statusEl.textContent = '❌ Erro ao iniciar: ' + e.message
+      btn.disabled = false
+    }
   },
 }
 

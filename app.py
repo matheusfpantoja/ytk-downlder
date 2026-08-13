@@ -28,6 +28,13 @@ try:
 except Exception:
     _plyer_notification = None
 
+try:
+    import whisper as _whisper
+    WHISPER_OK = True
+except ImportError:
+    _whisper = None
+    WHISPER_OK = False
+
 
 def _notify(title, message):
     """Envia notificação do SO; falha silenciosamente."""
@@ -237,6 +244,120 @@ class Api:
         return {"ok": False}
 
     # ── Download ─────────────────────────────────────────────
+
+    def get_subtitles(self, url, lang='pt', formato='srt'):
+        """Baixa vídeo + legenda nativa do vídeo (yt-dlp). Retorna {"ok": bool, "error": str|None}."""
+        import threading
+        def _run():
+            try:
+                pasta = str(PASTA_PADRAO)
+                opts = {
+                    'outtmpl': os.path.join(pasta, '%(uploader)s', '%(title)s.%(ext)s'),
+                    'writesubtitles': True,
+                    'writeautomaticsub': True,
+                    'subtitleslangs': [lang],
+                    'subtitlesformat': formato,
+                    'skip_download': False,
+                    'merge_output_format': 'mp4',
+                    'ffmpeg_location': resource_path('bin'),
+                    'progress_hooks': [self._hook],
+                    'quiet': True,
+                    'no_warnings': True,
+                }
+                self._cancelar = False
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    info = ydl.extract_info(url, download=True)
+                    titulo = info.get('title', url)
+                self._emit('download_complete', {'ok': True})
+                self._emit('history_update', {
+                    'item': {
+                        'url': url,
+                        'titulo': titulo,
+                        'tipo': 'legenda-nativa',
+                        'data': __import__('datetime').datetime.now().strftime('%d/%m/%Y %H:%M'),
+                    }
+                })
+            except Exception as e:
+                if not self._cancelar:
+                    self._emit('download_complete', {'ok': False, 'error': str(e)})
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+        return {'ok': True}
+
+    def transcribe_whisper(self, url, lang='pt', model_name='base'):
+        """Baixa vídeo, extrai áudio e transcreve com Whisper. Retorna {"ok": bool, "error": str|None}."""
+        import threading, tempfile, shutil
+        def _run():
+            if not WHISPER_OK:
+                self._emit('download_complete', {'ok': False, 'error': 'openai-whisper não está instalado. Rode: pip install openai-whisper'})
+                return
+            tmp_dir = tempfile.mkdtemp(prefix='ytk_whisper_')
+            try:
+                # 1. Baixar vídeo em mp4
+                self._cancelar = False
+                pasta = str(PASTA_PADRAO)
+                outtmpl = os.path.join(tmp_dir, '%(title)s.%(ext)s')
+                opts_video = {
+                    'outtmpl': outtmpl,
+                    'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4',
+                    'merge_output_format': 'mp4',
+                    'ffmpeg_location': resource_path('bin'),
+                    'progress_hooks': [self._hook],
+                    'quiet': True,
+                    'no_warnings': True,
+                }
+                with yt_dlp.YoutubeDL(opts_video) as ydl:
+                    info = ydl.extract_info(url, download=True)
+                    titulo = info.get('title', url)
+                # Localizar arquivo de vídeo baixado
+                video_files = [f for f in os.listdir(tmp_dir) if f.endswith('.mp4')]
+                if not video_files:
+                    raise FileNotFoundError('Arquivo de vídeo não encontrado após download.')
+                video_path = os.path.join(tmp_dir, video_files[0])
+                # 2. Transcrever com Whisper
+                self._emit('status', {'msg': f'Transcrevendo com Whisper ({model_name})...'})
+                model = _whisper.load_model(model_name)
+                result = model.transcribe(video_path, language=lang if lang != 'auto' else None)
+                # 3. Gerar SRT
+                def _srt_time(seconds):
+                    h = int(seconds // 3600)
+                    m = int((seconds % 3600) // 60)
+                    s = int(seconds % 60)
+                    ms = int((seconds - int(seconds)) * 1000)
+                    return f'{h:02d}:{m:02d}:{s:02d},{ms:03d}'
+                srt_lines = []
+                for i, seg in enumerate(result['segments'], 1):
+                    srt_lines.append(str(i))
+                    srt_lines.append(f'{_srt_time(seg["start"])} --> {_srt_time(seg["end"])}')
+                    srt_lines.append(seg['text'].strip())
+                    srt_lines.append('')
+                srt_content = '\n'.join(srt_lines)
+                # 4. Mover vídeo e salvar SRT na pasta final
+                artista_pasta = os.path.join(pasta, info.get('uploader', 'Unknown'))
+                os.makedirs(artista_pasta, exist_ok=True)
+                nome_base = os.path.splitext(video_files[0])[0]
+                destino_video = os.path.join(artista_pasta, video_files[0])
+                srt_path = os.path.join(artista_pasta, nome_base + '.srt')
+                shutil.move(video_path, destino_video)
+                with open(srt_path, 'w', encoding='utf-8') as f:
+                    f.write(srt_content)
+                self._emit('download_complete', {'ok': True})
+                self._emit('history_update', {
+                    'item': {
+                        'url': url,
+                        'titulo': titulo,
+                        'tipo': 'whisper-' + model_name,
+                        'data': __import__('datetime').datetime.now().strftime('%d/%m/%Y %H:%M'),
+                    }
+                })
+            except Exception as e:
+                if not self._cancelar:
+                    self._emit('download_complete', {'ok': False, 'error': str(e)})
+            finally:
+                shutil.rmtree(tmp_dir, ignore_errors=True)
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+        return {'ok': True}
 
     def cancel_download(self):
         """Cancela o download em andamento (chamado pelo JS via Escape)."""

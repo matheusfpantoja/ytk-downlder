@@ -1806,3 +1806,38 @@ body {
   border: 5px solid transparent;
   border-top-color: #232323;
 }
+
+/* === Aba Vídeo/Legenda === */
+.subtitle-info-hint {
+  font-size: 12px;
+  color: var(--main-sub);
+  line-height: 1.6;
+  margin-top: 4px;
+  padding: 0 2px;
+}
+.subtitle-info-hint code {
+  font-family: var(--mono);
+  font-size: 11px;
+  background: #f0f0f0;
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+[data-tema="dark"] .subtitle-info-hint code {
+  background: #222222;
+  color: #b0b0b0;
+}
+.subtitle-status {
+  margin-top: 16px;
+  padding: 11px 14px;
+  border-radius: var(--r-sm);
+  font-size: 13px;
+  line-height: 1.5;
+  background: #f6f6f6;
+  color: var(--main-sub);
+  border: 1px solid var(--main-b-light);
+}
+.subtitle-status.ok  { border-color: var(--green); color: #1a6e3c; background: #edfaf3; }
+.subtitle-status.err { border-color: var(--red);   color: #7a1a1a; background: #fdecea; }
+[data-tema="dark"] .subtitle-status        { background: #181818; border-color: #272727; }
+[data-tema="dark"] .subtitle-status.ok     { background: #0d2e1c; color: #5de8a0; border-color: #1a5c38; }
+[data-tema="dark"] .subtitle-status.err    { background: #2e0d0d; color: #f08080; border-color: #5c1a1a; }

@@ -6,7 +6,11 @@
       "Bash(python -c \"from yt_dlp.utils import DownloadCancelled; print\\('DownloadCancelled OK', DownloadCancelled\\)\")",
       "Bash(timeout 8 python app.py)",
       "Bash(echo \"EXIT:$?\")",
-      "Bash(python -c ' *)"
+      "Bash(python -c ' *)",
+      "Bash(timeout 8 python -c \"import ast; ast.parse\\(open\\('app.py',encoding='utf-8'\\).read\\(\\)\\)\")",
+      "Bash(node -c ui/app.js)",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('app.py',encoding='utf-8'\\).read\\(\\)\\)\")",
+      "Bash(timeout 6 python app.py)"
     ]
   }
 }
