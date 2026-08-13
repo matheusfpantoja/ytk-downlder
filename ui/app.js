@@ -617,6 +617,14 @@ const App = {
     document.getElementById('subtitleWhisperInfo').style.display = mode === 'whisper' ? '' : 'none'
   },
 
+  toggleWhisperInfo() {
+    const panel = document.getElementById('whisperInfoPanel')
+    const icon  = document.getElementById('whisperInfoToggleIcon')
+    const abrir = panel.style.display === 'none'
+    panel.style.display = abrir ? 'block' : 'none'
+    icon.textContent = abrir ? '▾' : '▸'
+  },
+
   async downloadSubtitle() {
     const url = (document.getElementById('subtitleUrl').value || '').trim()
     if (!url) { alert('Cole uma URL primeiro.'); return; }

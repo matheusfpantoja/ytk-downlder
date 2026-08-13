@@ -587,7 +587,7 @@
             </div>
           </div>
           <div class="opt-row">
-            <div class="opt-label">Idioma</div>
+            <div class="opt-label">Idioma da legenda</div>
             <div class="radio-group">
               <label class="radio-pill"><input type="radio" name="whisperLang" value="pt" checked> PT</label>
               <label class="radio-pill"><input type="radio" name="whisperLang" value="en"> EN</label>
@@ -599,7 +599,6 @@
               <label class="radio-pill"><input type="radio" name="whisperLang" value="it"> IT</label>
               <label class="radio-pill"><input type="radio" name="whisperLang" value="ko"> KO</label>
               <label class="radio-pill"><input type="radio" name="whisperLang" value="ru"> RU</label>
-              <label class="radio-pill"><input type="radio" name="whisperLang" value="auto"> 🔍 Auto</label>
             </div>
           </div>
         </div>
@@ -635,6 +634,43 @@
             </div>
             <div class="queue-detalhe" id="subtitleProgDetalhe"></div>
           </div>
+        </div>
+      </div>
+
+      <div class="info-toggle-wrap">
+        <button type="button" class="info-toggle-btn" id="whisperInfoToggle" onclick="App.toggleWhisperInfo()">
+          <span id="whisperInfoToggleIcon">▸</span> Informações que você deve saber
+        </button>
+        <div class="info-panel" id="whisperInfoPanel" style="display:none">
+
+          <p class="info-panel-title">Como funciona</p>
+          <p class="info-panel-text">O Whisper roda direto na sua máquina (CPU), sem enviar o vídeo pra internet — por isso a velocidade depende do seu computador, não da sua internet.</p>
+
+          <p class="info-panel-title">Os modelos disponíveis</p>
+          <table class="info-panel-table">
+            <thead><tr><th>Modelo</th><th>Tamanho</th><th>Velocidade</th><th>Qualidade</th></tr></thead>
+            <tbody>
+              <tr><td>tiny</td><td>~75 MB</td><td>Mais rápido</td><td>Básica</td></tr>
+              <tr><td>base</td><td>~150 MB</td><td>Rápido</td><td>Boa (recomendado)</td></tr>
+              <tr><td>small</td><td>~470 MB</td><td>Média</td><td>Muito boa</td></tr>
+              <tr><td>medium</td><td>~1.5 GB</td><td>Lento</td><td>Excelente</td></tr>
+              <tr><td>large</td><td>~3 GB</td><td>Mais lento</td><td>Máxima</td></tr>
+            </tbody>
+          </table>
+          <p class="info-panel-text">Modelos maiores = melhor qualidade, porém mais lentos e mais pesados. Em computadores sem placa de vídeo dedicada, o <code>large</code> pode levar mais tempo que a duração do próprio vídeo.</p>
+
+          <p class="info-panel-title">Primeira vez usando um modelo</p>
+          <p class="info-panel-text">Na primeira transcrição com um modelo novo, o app baixa o arquivo do modelo automaticamente — isso acontece uma vez só e pode levar alguns minutos, dependendo do tamanho.</p>
+
+          <p class="info-panel-title">Durante a transcrição, não há barra de progresso</p>
+          <p class="info-panel-text">Diferente do download do vídeo, o Whisper não informa uma porcentagem de progresso. A tela vai mostrar "Transcrevendo…" parado — isso é normal e não significa travamento.</p>
+
+          <p class="info-panel-title">A qualidade depende do áudio original</p>
+          <p class="info-panel-text">Sotaques fortes, ruído de fundo, termos técnicos ou múltiplas pessoas falando ao mesmo tempo podem gerar erros na transcrição. Isso é uma limitação do modelo Whisper em si, não um defeito do app.</p>
+
+          <p class="info-panel-title">Como funciona a tradução</p>
+          <p class="info-panel-text">O app detecta automaticamente o idioma falado no vídeo. Se o idioma escolhido para a legenda for diferente do idioma falado, o texto é traduzido automaticamente após a transcrição, usando um serviço gratuito de tradução. Isso pode ocasionalmente perder nuances, expressões idiomáticas ou gírias, e depende de conexão com a internet.</p>
+
         </div>
       </div>
 

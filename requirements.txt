@@ -6,3 +6,4 @@ Pillow>=10.0.0
 requests>=2.31.0
 plyer>=2.1.0
 openai-whisper
+deep-translator>=1.11.4

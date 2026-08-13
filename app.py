@@ -94,6 +94,15 @@ YTDLP_SLEEP_OPTS = {
     "sleep_interval_subtitles": 2,
 }
 
+# Alguns códigos de idioma do Whisper não batem com os exigidos pelo
+# serviço de tradução (ex: chinês). Mapeia as exceções conhecidas.
+LANG_MAP_TRANSLATE = {
+    "zh": "zh-CN",
+}
+
+def _map_lang_translate(code):
+    return LANG_MAP_TRANSLATE.get(code, code)
+
 
 # ─── Histórico ────────────────────────────────────────────────
 
@@ -298,8 +307,26 @@ class Api:
         t.start()
         return {'ok': True}
 
+    def _translate_texts(self, texts, source, target):
+        """Traduz uma lista de textos em lotes, com fallback silencioso por lote em caso de falha."""
+        from deep_translator import GoogleTranslator
+        translated = []
+        chunk_size = 50
+        translator = GoogleTranslator(source=source, target=target)
+        for i in range(0, len(texts), chunk_size):
+            chunk = texts[i:i + chunk_size]
+            try:
+                result = translator.translate_batch(chunk)
+                if not result or len(result) != len(chunk):
+                    result = chunk
+            except Exception:
+                result = chunk
+            translated.extend(result)
+        return translated
+
     def transcribe_whisper(self, url, lang='pt', model_name='base'):
-        """Baixa vídeo, extrai áudio e transcreve com Whisper. Retorna {"ok": bool, "error": str|None}."""
+        """Baixa vídeo, transcreve com Whisper (detectando o idioma automaticamente)
+        e traduz para o idioma escolhido, se necessário. Retorna {"ok": bool, "error": str|None}."""
         import threading, tempfile, shutil
         def _run():
             if not WHISPER_OK:
@@ -331,10 +358,27 @@ class Api:
                 if not video_files:
                     raise FileNotFoundError('Arquivo de vídeo não encontrado após download.')
                 video_path = os.path.join(tmp_dir, video_files[0])
+
                 self._emit('status', {'msg': f'Transcrevendo com Whisper ({model_name})…'})
                 self._emit('log', {'msg': f'🤖 Transcrevendo com Whisper ({model_name})…'})
                 model = _whisper.load_model(model_name)
-                result = model.transcribe(video_path, language=lang if lang != 'auto' else None)
+                # Sempre detecta o idioma falado automaticamente (language=None)
+                result = model.transcribe(video_path, language=None)
+                detected_lang = result.get('language', 'en')
+
+                segments = result['segments']
+                texts = [seg['text'].strip() for seg in segments]
+
+                if lang != detected_lang:
+                    self._emit('log', {'msg': f'🌐 Idioma detectado no vídeo: {detected_lang} — traduzindo legenda para {lang}…'})
+                    self._emit('status', {'msg': f'Traduzindo legenda de {detected_lang} para {lang}…'})
+                    src = _map_lang_translate(detected_lang)
+                    tgt = _map_lang_translate(lang)
+                    try:
+                        texts = self._translate_texts(texts, src, tgt)
+                    except Exception as e:
+                        self._emit('log', {'msg': f'⚠️ Falha ao traduzir ({e}) — legenda ficará no idioma original ({detected_lang}).'})
+
                 def _srt_time(seconds):
                     h = int(seconds // 3600)
                     m = int((seconds % 3600) // 60)
@@ -342,12 +386,14 @@ class Api:
                     ms = int((seconds - int(seconds)) * 1000)
                     return f'{h:02d}:{m:02d}:{s:02d},{ms:03d}'
                 srt_lines = []
-                for i, seg in enumerate(result['segments'], 1):
-                    srt_lines.append(str(i))
+                for i, seg in enumerate(segments):
+                    texto = texts[i] if i < len(texts) else seg['text'].strip()
+                    srt_lines.append(str(i + 1))
                     srt_lines.append(f'{_srt_time(seg["start"])} --> {_srt_time(seg["end"])}')
-                    srt_lines.append(seg['text'].strip())
+                    srt_lines.append(texto.strip())
                     srt_lines.append('')
                 srt_content = '\n'.join(srt_lines)
+
                 artista_pasta = os.path.join(pasta, info.get('uploader', 'Unknown'))
                 os.makedirs(artista_pasta, exist_ok=True)
                 nome_base = os.path.splitext(video_files[0])[0]
@@ -356,7 +402,8 @@ class Api:
                 shutil.move(video_path, destino_video)
                 with open(srt_path, 'w', encoding='utf-8') as f:
                     f.write(srt_content)
-                self.historico.add(titulo, url, 'SRT (Whisper)', model_name, destino_video)
+
+                self.historico.add(titulo, url, 'SRT (Whisper)', f'{model_name} → {lang}', destino_video)
                 self._emit('download_complete', {'ok': True})
                 self._emit('log', {'msg': f'✅ Transcrição concluída: {titulo}'})
                 self._emit('history_update', {'item': self.historico.itens[0]})

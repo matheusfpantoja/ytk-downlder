@@ -10,7 +10,11 @@
       "Bash(timeout 8 python -c \"import ast; ast.parse\\(open\\('app.py',encoding='utf-8'\\).read\\(\\)\\)\")",
       "Bash(node -c ui/app.js)",
       "Bash(python -c \"import ast; ast.parse\\(open\\('app.py',encoding='utf-8'\\).read\\(\\)\\)\")",
-      "Bash(timeout 6 python app.py)"
+      "Bash(timeout 6 python app.py)",
+      "Bash(node -e \"require\\('fs'\\).readFileSync\\('ui/app.js','utf8'\\)\")",
+      "Bash(cat /tmp/app_run.log 2>&1)",
+      "Read(//tmp/**)",
+      "Bash(cat /tmp/app_run2.log 2>&1)"
     ]
   }
 }
