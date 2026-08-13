@@ -259,6 +259,8 @@ class Api:
         import threading
         def _run():
             try:
+                if not self.ffmpeg_path:
+                    raise Exception("FFmpeg não está instalado nesta máquina. Veja o log para o link de instalação.")
                 self._emit('log', {'msg': f'💬 Baixando vídeo + legenda nativa ({lang})…'})
                 pasta = str(PASTA_PADRAO)
                 opts = {
@@ -269,7 +271,7 @@ class Api:
                     'subtitlesformat': formato,
                     'skip_download': False,
                     'merge_output_format': 'mp4',
-                    'ffmpeg_location': resource_path('bin'),
+                    'ffmpeg_location': os.path.dirname(self.ffmpeg_path),
                     'progress_hooks': [self._hook],
                     'quiet': True,
                     'no_warnings': True,
@@ -306,6 +308,8 @@ class Api:
                 return
             tmp_dir = tempfile.mkdtemp(prefix='ytk_whisper_')
             try:
+                if not self.ffmpeg_path:
+                    raise Exception("FFmpeg não está instalado nesta máquina. Veja o log para o link de instalação.")
                 self._cancelar = False
                 self._emit('log', {'msg': f'🤖 Baixando vídeo para transcrição Whisper ({model_name})…'})
                 pasta = str(PASTA_PADRAO)
@@ -314,7 +318,7 @@ class Api:
                     'outtmpl': outtmpl,
                     'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4',
                     'merge_output_format': 'mp4',
-                    'ffmpeg_location': resource_path('bin'),
+                    'ffmpeg_location': os.path.dirname(self.ffmpeg_path),
                     'progress_hooks': [self._hook],
                     'quiet': True,
                     'no_warnings': True,
