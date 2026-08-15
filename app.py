@@ -308,21 +308,120 @@ class Api:
         return {'ok': True}
 
     def _translate_texts(self, texts, source, target):
-        """Traduz uma lista de textos em lotes, com fallback silencioso por lote em caso de falha."""
+        """Traduz em lotes (poucas requisições). Depois de cada tradução, verifica
+        se o resultado voltou IDÊNTICO ao original quando isso é suspeito (frase
+        com 2+ palavras que deveria ter mudado de idioma) — o serviço gratuito às
+        vezes 'falha silenciosamente', devolvendo sucesso sem realmente traduzir,
+        sem lançar nenhum erro. Quando detecta esse padrão, tenta de novo o trecho
+        individualmente (com pequenas pausas) antes de desistir e registrar no log."""
+        import time
         from deep_translator import GoogleTranslator
-        translated = []
-        chunk_size = 50
         translator = GoogleTranslator(source=source, target=target)
-        for i in range(0, len(texts), chunk_size):
-            chunk = texts[i:i + chunk_size]
+        SEP = '\n'
+        MAX_CHARS = 3000
+
+        def _suspeito(original, traduzido):
+            if not traduzido or not traduzido.strip():
+                return True
+            o, t = original.strip(), traduzido.strip()
+            if o.lower() != t.lower():
+                return False
+            # Frases com 2+ palavras que voltaram idênticas são suspeitas de falha silenciosa.
+            # Textos curtos (nomes próprios, números, "OK.") podem legitimamente não mudar.
+            return len(o.split()) >= 2
+
+        def _traduzir_lote(lote):
+            joined = SEP.join(lote)
             try:
-                result = translator.translate_batch(chunk)
-                if not result or len(result) != len(chunk):
-                    result = chunk
+                result = translator.translate(joined) or ''
+                partes = result.split(SEP)
+                if len(partes) != len(lote):
+                    return None
+                return partes
             except Exception:
-                result = chunk
-            translated.extend(result)
+                return None
+
+        def _traduzir_um(texto, tentativas=2):
+            if not texto.strip():
+                return texto, False
+            for _ in range(tentativas):
+                try:
+                    out = translator.translate(texto)
+                    if out and not _suspeito(texto, out):
+                        return out, False
+                except Exception:
+                    pass
+                time.sleep(0.25)
+            return texto, True  # esgotou tentativas — mantém original, marca como falha real
+
+        translated = []
+        falhas = 0
+        i = 0
+        n = len(texts)
+        while i < n:
+            lote = []
+            lote_len = 0
+            while i < n and (lote_len + len(texts[i]) + 1) <= MAX_CHARS:
+                lote.append(texts[i])
+                lote_len += len(texts[i]) + 1
+                i += 1
+            if not lote:
+                lote = [texts[i]]
+                i += 1
+            partes = _traduzir_lote(lote)
+            if partes is None:
+                partes = [None] * len(lote)
+            for original, candidato in zip(lote, partes):
+                if candidato is not None and not _suspeito(original, candidato):
+                    translated.append(candidato)
+                else:
+                    out, falhou = _traduzir_um(original)
+                    translated.append(out)
+                    if falhou:
+                        falhas += 1
+            time.sleep(0.2)
+        if falhas:
+            self._emit('log', {'msg': f'⚠️ {falhas} de {len(texts)} trechos não puderam ser traduzidos mesmo após novas tentativas e permaneceram no idioma original.'})
         return translated
+
+    def _chunk_words(self, segments, max_chars=80, max_duration=6.0, pause_gap=0.6):
+        """Recorta os segmentos brutos do Whisper (que podem ser longos) em blocos
+        menores de legenda, baseado em limite de caracteres, duração máxima e pausas
+        naturais entre palavras — evita blocos gigantes que 'entregam' falas futuras."""
+        cues = []
+        current_words = []
+        current_start = None
+        last_end = None
+        for seg in segments:
+            words = seg.get('words') or []
+            if not words:
+                texto = seg.get('text', '').strip()
+                if texto:
+                    words = [{'word': texto, 'start': seg['start'], 'end': seg['end']}]
+                else:
+                    continue
+            for w in words:
+                word_text = (w.get('word') or '').strip()
+                if not word_text:
+                    continue
+                w_start = w['start']
+                w_end = w['end']
+                if current_start is None:
+                    current_start = w_start
+                gap = (w_start - last_end) if last_end is not None else 0
+                projected = (' '.join(x['word'].strip() for x in current_words) + ' ' + word_text).strip()
+                duracao = w_end - current_start
+                if current_words and (gap > pause_gap or len(projected) > max_chars or duracao > max_duration):
+                    cue_text = ' '.join(x['word'].strip() for x in current_words).strip()
+                    cues.append({'start': current_start, 'end': last_end, 'text': cue_text})
+                    current_words = []
+                    current_start = w_start
+                current_words.append(w)
+                last_end = w_end
+        if current_words:
+            cue_text = ' '.join(x['word'].strip() for x in current_words).strip()
+            cues.append({'start': current_start, 'end': last_end, 'text': cue_text})
+        return cues
 
     def transcribe_whisper(self, url, lang='pt', model_name='base'):
         """Baixa vídeo, transcreve com Whisper (detectando o idioma automaticamente)
@@ -363,11 +462,12 @@ class Api:
                 self._emit('log', {'msg': f'🤖 Transcrevendo com Whisper ({model_name})…'})
                 model = _whisper.load_model(model_name)
                 # Sempre detecta o idioma falado automaticamente (language=None)
-                result = model.transcribe(video_path, language=None)
+                # word_timestamps=True permite recortar a legenda em blocos menores e sincronizados
+                result = model.transcribe(video_path, language=None, word_timestamps=True)
                 detected_lang = result.get('language', 'en')
 
-                segments = result['segments']
-                texts = [seg['text'].strip() for seg in segments]
+                cues = self._chunk_words(result['segments'])
+                texts = [c['text'] for c in cues]
 
                 if lang != detected_lang:
                     self._emit('log', {'msg': f'🌐 Idioma detectado no vídeo: {detected_lang} — traduzindo legenda para {lang}…'})
@@ -386,10 +486,10 @@ class Api:
                     ms = int((seconds - int(seconds)) * 1000)
                     return f'{h:02d}:{m:02d}:{s:02d},{ms:03d}'
                 srt_lines = []
-                for i, seg in enumerate(segments):
-                    texto = texts[i] if i < len(texts) else seg['text'].strip()
+                for i, cue in enumerate(cues):
+                    texto = texts[i] if i < len(texts) else cue['text']
                     srt_lines.append(str(i + 1))
-                    srt_lines.append(f'{_srt_time(seg["start"])} --> {_srt_time(seg["end"])}')
+                    srt_lines.append(f'{_srt_time(cue["start"])} --> {_srt_time(cue["end"])}')
                     srt_lines.append(texto.strip())
                     srt_lines.append('')
                 srt_content = '\n'.join(srt_lines)

@@ -14,7 +14,9 @@
       "Bash(node -e \"require\\('fs'\\).readFileSync\\('ui/app.js','utf8'\\)\")",
       "Bash(cat /tmp/app_run.log 2>&1)",
       "Read(//tmp/**)",
-      "Bash(cat /tmp/app_run2.log 2>&1)"
+      "Bash(cat /tmp/app_run2.log 2>&1)",
+      "Bash(echo \"EXIT_STATUS:$?\")",
+      "Bash(python -m py_compile app.py)"
     ]
   }
 }
