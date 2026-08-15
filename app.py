@@ -271,9 +271,9 @@ class Api:
                 if not self.ffmpeg_path:
                     raise Exception("FFmpeg não está instalado nesta máquina. Veja o log para o link de instalação.")
                 self._emit('log', {'msg': f'💬 Baixando vídeo + legenda nativa ({lang})…'})
-                pasta = str(PASTA_PADRAO)
+                pasta = str(self.pasta_destino)
                 opts = {
-                    'outtmpl': os.path.join(pasta, '%(uploader)s', '%(title)s.%(ext)s'),
+                    'outtmpl': os.path.join(pasta, 'Vídeos', '%(uploader)s', '%(title)s.%(ext)s'),
                     'writesubtitles': True,
                     'writeautomaticsub': True,
                     'subtitleslangs': [lang],
@@ -294,15 +294,16 @@ class Api:
                 if info.get('requested_downloads'):
                     arquivo = info['requested_downloads'][0].get('filepath', '')
                 if not arquivo:
-                    arquivo = os.path.join(pasta, info.get('uploader', 'Unknown'), f"{titulo}.mp4")
+                    arquivo = os.path.join(pasta, 'Vídeos', info.get('uploader', 'Unknown'), f"{titulo}.mp4")
                 self.historico.add(titulo, url, 'SRT', lang.upper(), arquivo)
                 self._emit('download_complete', {'ok': True})
                 self._emit('log', {'msg': f'✅ Legenda baixada: {titulo}'})
                 self._emit('history_update', {'item': self.historico.itens[0]})
             except Exception as e:
                 if not self._cancelar:
-                    self._emit('download_complete', {'ok': False, 'error': str(e)})
-                    self._emit('log', {'msg': f'❌ Erro na legenda ({lang}): {e}'})
+                    erro_msg = self._friendly_error(e)
+                    self._emit('download_complete', {'ok': False, 'error': erro_msg})
+                    self._emit('log', {'msg': f'❌ Erro na legenda ({lang}): {erro_msg}'})
         t = threading.Thread(target=_run, daemon=True)
         t.start()
         return {'ok': True}
@@ -438,7 +439,7 @@ class Api:
                     raise Exception("FFmpeg não está instalado nesta máquina. Veja o log para o link de instalação.")
                 self._cancelar = False
                 self._emit('log', {'msg': f'🤖 Baixando vídeo para transcrição Whisper ({model_name})…'})
-                pasta = str(PASTA_PADRAO)
+                pasta = str(self.pasta_destino)
                 outtmpl = os.path.join(tmp_dir, '%(title)s.%(ext)s')
                 opts_video = {
                     'outtmpl': outtmpl,
@@ -494,7 +495,7 @@ class Api:
                     srt_lines.append('')
                 srt_content = '\n'.join(srt_lines)
 
-                artista_pasta = os.path.join(pasta, info.get('uploader', 'Unknown'))
+                artista_pasta = os.path.join(pasta, 'Vídeos', info.get('uploader', 'Unknown'))
                 os.makedirs(artista_pasta, exist_ok=True)
                 nome_base = os.path.splitext(video_files[0])[0]
                 destino_video = os.path.join(artista_pasta, video_files[0])
@@ -509,10 +510,89 @@ class Api:
                 self._emit('history_update', {'item': self.historico.itens[0]})
             except Exception as e:
                 if not self._cancelar:
-                    self._emit('download_complete', {'ok': False, 'error': str(e)})
-                    self._emit('log', {'msg': f'❌ Erro na transcrição Whisper: {e}'})
+                    erro_msg = self._friendly_error(e)
+                    self._emit('download_complete', {'ok': False, 'error': erro_msg})
+                    self._emit('log', {'msg': f'❌ Erro na transcrição Whisper: {erro_msg}'})
             finally:
                 shutil.rmtree(tmp_dir, ignore_errors=True)
+        t = threading.Thread(target=_run, daemon=True)
+        t.start()
+        return {'ok': True}
+
+    def choose_video_dialog(self):
+        """Abre diálogo nativo para escolher um vídeo já salvo no computador."""
+        result = self._win.create_file_dialog(
+            webview.OPEN_DIALOG,
+            file_types=('Arquivos de vídeo (*.mp4;*.mkv;*.avi;*.mov;*.webm;*.flv;*.wmv;*.m4v)', 'Todos os arquivos (*.*)'),
+        )
+        if result:
+            path = result[0]
+            return {"ok": True, "path": path, "nome": os.path.basename(path)}
+        return {"ok": False}
+
+    def transcribe_whisper_local(self, path, lang='pt', model_name='base'):
+        """Gera legenda (.srt) para um vídeo já existente no computador, sem
+        baixar nada — reaproveita o mesmo pipeline Whisper usado para vídeos
+        da internet. O arquivo original NÃO é movido nem alterado; o .srt é
+        salvo ao lado dele, com o mesmo nome."""
+        import threading
+        def _run():
+            if not WHISPER_OK:
+                self._emit('download_complete', {'ok': False, 'error': 'openai-whisper não está instalado. Rode: pip install openai-whisper'})
+                self._emit('log', {'msg': '❌ Whisper não instalado (pip install openai-whisper)'})
+                return
+            try:
+                if not os.path.exists(path):
+                    raise FileNotFoundError('Arquivo não encontrado: ' + path)
+                self._cancelar = False
+                titulo = os.path.splitext(os.path.basename(path))[0]
+                self._emit('status', {'msg': f'Carregando modelo Whisper ({model_name})…'})
+                self._emit('log', {'msg': f'📝 Gerando legenda local para: {titulo}'})
+                model = _whisper.load_model(model_name)
+                result = model.transcribe(path, language=None, word_timestamps=True)
+                detected_lang = result.get('language', 'en')
+
+                cues = self._chunk_words(result['segments'])
+                texts = [c['text'] for c in cues]
+
+                if lang != detected_lang:
+                    self._emit('log', {'msg': f'🌐 Idioma detectado no vídeo: {detected_lang} — traduzindo legenda para {lang}…'})
+                    self._emit('status', {'msg': f'Traduzindo legenda de {detected_lang} para {lang}…'})
+                    src = _map_lang_translate(detected_lang)
+                    tgt = _map_lang_translate(lang)
+                    try:
+                        texts = self._translate_texts(texts, src, tgt)
+                    except Exception as e:
+                        self._emit('log', {'msg': f'⚠️ Falha ao traduzir ({e}) — legenda ficará no idioma original ({detected_lang}).'})
+
+                def _srt_time(seconds):
+                    h = int(seconds // 3600)
+                    m = int((seconds % 3600) // 60)
+                    s = int(seconds % 60)
+                    ms = int((seconds - int(seconds)) * 1000)
+                    return f'{h:02d}:{m:02d}:{s:02d},{ms:03d}'
+                srt_lines = []
+                for i, cue in enumerate(cues):
+                    texto = texts[i] if i < len(texts) else cue['text']
+                    srt_lines.append(str(i + 1))
+                    srt_lines.append(f'{_srt_time(cue["start"])} --> {_srt_time(cue["end"])}')
+                    srt_lines.append(texto.strip())
+                    srt_lines.append('')
+                srt_content = '\n'.join(srt_lines)
+
+                srt_path = os.path.splitext(path)[0] + '.srt'
+                with open(srt_path, 'w', encoding='utf-8') as f:
+                    f.write(srt_content)
+
+                self.historico.add(titulo, path, 'SRT (Whisper local)', f'{model_name} → {lang}', path)
+                self._emit('download_complete', {'ok': True})
+                self._emit('log', {'msg': f'✅ Legenda local concluída: {titulo}'})
+                self._emit('history_update', {'item': self.historico.itens[0]})
+            except Exception as e:
+                if not self._cancelar:
+                    erro_msg = self._friendly_error(e)
+                    self._emit('download_complete', {'ok': False, 'error': erro_msg})
+                    self._emit('log', {'msg': f'❌ Erro na legenda local: {erro_msg}'})
         t = threading.Thread(target=_run, daemon=True)
         t.start()
         return {'ok': True}
@@ -523,6 +603,14 @@ class Api:
             self._cancelar = True
             return {"ok": True}
         return {"ok": False}
+
+    def _friendly_error(self, e):
+        """Traduz mensagens técnicas de erro do yt-dlp em algo que o usuário
+        consiga entender e agir a respeito."""
+        msg = str(e)
+        if '403' in msg and 'forbidden' in msg.lower():
+            return "Muitas requisições para o mesmo vídeo. Tente atualizar a página (ou aguardar um pouco) e iniciar o download novamente."
+        return msg
 
     def start_download(self, params):
         url = (params.get("url") or "").strip()
@@ -562,11 +650,12 @@ class Api:
             self._emit("log",    {"msg": "⏹ Download cancelado."})
             self._emit("status", {"msg": "⏹ Cancelado"})
         except Exception as e:
-            self._emit("download_complete", {"ok": False, "error": str(e)})
-            self._emit("log",    {"msg": f"❌ Erro: {e}"})
+            erro_msg = self._friendly_error(e)
+            self._emit("download_complete", {"ok": False, "error": erro_msg})
+            self._emit("log",    {"msg": f"❌ Erro: {erro_msg}"})
             self._emit("status", {"msg": "❌ Erro no download"})
             if notificar:
-                _notify("Erro no download", str(e)[:100])
+                _notify("Erro no download", erro_msg[:100])
         finally:
             self.baixando = False
 
@@ -622,9 +711,13 @@ class Api:
                     with yt_dlp.YoutubeDL(item_opts) as ydl2:
                         self._pos_download(ydl2.extract_info(eurl, download=True), params)
                     sucesso += 1
+                except DownloadCancelled:
+                    # Cancelamento deve interromper a playlist inteira, não só o item atual.
+                    # Relança para propagar até o tratamento em _download_thread.
+                    raise
                 except Exception as e:
                     falha += 1
-                    self._emit("log", {"msg": f"  ⚠ {e}"})
+                    self._emit("log", {"msg": f"  ⚠ {self._friendly_error(e)}"})
 
             self._playlist_status = ""
             resumo = f"✅ Playlist concluída: {sucesso} baixadas"
@@ -650,7 +743,11 @@ class Api:
         organizar   = params.get("organizar", True)
         metadados   = params.get("metadados", True)
 
-        tmpl   = "%(channel)s/%(title)s.%(ext)s" if organizar else "%(title)s.%(ext)s"
+        # Separa Vídeos e Músicas já na raiz da pasta escolhida pelo usuário,
+        # antes de organizar por artista/canal — evita misturar os dois tipos
+        # na mesma pasta de artista.
+        base_pasta = "Vídeos" if tipo == "video" else "Músicas"
+        tmpl   = f"{base_pasta}/%(channel)s/%(title)s.%(ext)s" if organizar else f"{base_pasta}/%(title)s.%(ext)s"
         output = os.path.join(self.pasta_destino, tmpl)
 
         opts = {
@@ -820,19 +917,61 @@ class Api:
 
 # ─── Iniciar ──────────────────────────────────────────────────
 
+def _bind_drop_events(window):
+    """Permite capturar o caminho REAL de um arquivo arrastado do Explorer —
+    isso é impossível via JavaScript puro (bloqueio de segurança do navegador),
+    então o pywebview expõe um jeito de capturar isso do lado do Python."""
+    try:
+        from webview.dom import DOMEventHandler
+    except ImportError:
+        return  # versão do pywebview sem suporte a isso; drag&drop de arquivo local não funcionará
+
+    VIDEO_EXT = ('.mp4', '.mkv', '.avi', '.mov', '.webm', '.flv', '.wmv', '.m4v')
+
+    def _on_drop(e):
+        try:
+            files = e.get('dataTransfer', {}).get('files', [])
+            for f in files:
+                path = f.get('pywebviewFullPath')
+                if path and path.lower().endswith(VIDEO_EXT):
+                    nome = os.path.basename(path)
+                    window.evaluate_js(
+                        'App.handle("caption_file_dropped", ' +
+                        json.dumps({"path": path, "nome": nome}) + ')'
+                    )
+                    return
+        except Exception:
+            pass
+
+    window.dom.document.events.drop += DOMEventHandler(_on_drop, True, True)
+
+
 if __name__ == "__main__":
     api = Api()
+
+    # Calcula a posição pra abrir centralizada na tela — não dá pra confiar
+    # no "padrão" do pywebview aqui, há um bug conhecido em algumas versões
+    # onde a janela some no canto em vez de centralizar sozinha.
+    WIN_W, WIN_H = 1000, 720
+    try:
+        screen = webview.screens[0]
+        pos_x = max(0, (screen.width - WIN_W) // 2)
+        pos_y = max(0, (screen.height - WIN_H) // 2)
+    except Exception:
+        pos_x = pos_y = None  # fallback: deixa o pywebview decidir
 
     window = webview.create_window(
         title            = "YT Downloader",
         url              = resource_path(os.path.join("ui", "index.html")),
         js_api           = api,
-        width            = 1000,
-        height           = 720,
+        width            = WIN_W,
+        height           = WIN_H,
         min_size         = (800, 580),
         background_color = "#08080f",
         text_select      = False,
+        x                = pos_x,
+        y                = pos_y,
     )
 
     api.set_window(window)
-    webview.start()
+    webview.start(_bind_drop_events, window)

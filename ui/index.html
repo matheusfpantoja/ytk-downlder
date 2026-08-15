@@ -38,27 +38,30 @@
         <span class="icon">◷</span> Histórico
       </button>
 
-      <button class="nav-btn" data-tab="features" onclick="App.tab('features')">
-        <span class="icon">✦</span> Funcionalidades
+      <button class="nav-btn" data-tab="subtitle" onclick="App.tab('subtitle')">
+        <span class="icon">▶</span> Vídeo/Legenda
       </button>
 
-      <button class="nav-btn" data-tab="subtitle" onclick="App.tab('subtitle')">
-        <span class="icon">💬</span> Vídeo/Legenda
+      <button class="nav-btn" data-tab="caption" onclick="App.tab('caption')">
+        <span class="icon">✎</span> Criar Legenda
+      </button>
+
+      <button class="nav-btn" data-tab="features" onclick="App.tab('features')">
+        <span class="icon">✦</span> Funcionalidades
       </button>
     </nav>
 
     <!-- Footer -->
     <div class="sidebar-footer">
-      <div class="folder-label">Salvar em</div>
+      <div class="folder-label">⌂ Salvar em</div>
       <div class="folder-path" id="folderPath" onclick="App.chooseFolder()" title="Clique para mudar">–</div>
       <button class="btn-ghost" onclick="App.openFolder()">
         ↗ &nbsp;Abrir pasta
       </button>
       <button class="btn-ghost theme-toggle" onclick="App.toggleTheme()" id="themeBtn">
-        <span class="dot" style="width:7px;height:7px;border-radius:50%;background:var(--gold);display:inline-block;box-shadow:0 0 5px var(--gold-glow)"></span>
-        <span id="themeLabel">Tema claro</span>
+        <span id="themeIcon">○</span>&nbsp;<span id="themeLabel">Tema claro</span>
       </button>
-      <button class="btn-ghost" onclick="App.openLogModal()">📄 &nbsp;Ver log completo</button>
+      <button class="btn-ghost" onclick="App.openLogModal()">▤ &nbsp;Logs</button>
       <div class="shortcuts-hint" title="Atalhos de teclado disponíveis">
         <span>⌨</span>
         <span>Ctrl+V baixar · Ctrl+F buscar</span>
@@ -93,7 +96,7 @@
           <input id="urlInput" type="text" class="input-url"
             placeholder="Cole o link (YouTube, SoundCloud, Bandcamp, Vimeo...)"
             onkeydown="if(event.key==='Enter') App.download()">
-          <button class="btn-icon" onclick="App.loadTxt()" title="Carregar .txt com links">📂</button>
+          <button class="btn-icon" onclick="App.loadTxt()" title="Carregar .txt com links">❐</button>
         </div>
       </div>
 
@@ -110,11 +113,11 @@
             <div class="radio-group" id="tipoGroup">
               <label class="radio-pill">
                 <input type="radio" name="tipo" value="musica" checked
-                  onchange="App.onTipoChange()"> 🎵 Música
+                  onchange="App.onTipoChange()"> ♪ Música
               </label>
               <label class="radio-pill">
                 <input type="radio" name="tipo" value="video"
-                  onchange="App.onTipoChange()"> 🎬 Vídeo
+                  onchange="App.onTipoChange()"> ▶ Vídeo
               </label>
             </div>
           </div>
@@ -125,7 +128,7 @@
           <div class="checks-col">
             <label class="checkbox-pill">
               <input type="checkbox" id="chkPlaylist" onchange="App.onPlaylistChange()">
-              📋 Baixar playlist inteira
+              ☰ Baixar playlist inteira
             </label>
             <span class="info-icon-wrap">
               <button type="button" class="info-icon-btn"
@@ -281,7 +284,7 @@
           <h1>Histórico</h1>
           <p>Todos os downloads anteriores</p>
         </div>
-        <button class="btn-danger" onclick="App.clearHistory()">🗑 Limpar</button>
+        <button class="btn-danger" onclick="App.clearHistory()">✕ Limpar</button>
       </div>
       <div id="historyList"></div>
     </section>
@@ -404,10 +407,17 @@
             </div>
           </div>
           <div class="feat-item">
+            <span class="feat-icon">🗃</span>
+            <div class="feat-body">
+              <div class="feat-name">Separação por tipo</div>
+              <div class="feat-desc">Vídeos e músicas nunca se misturam — cada tipo cai em sua própria pasta (Vídeos/ ou Músicas/) dentro da pasta escolhida.</div>
+            </div>
+          </div>
+          <div class="feat-item">
             <span class="feat-icon">📁</span>
             <div class="feat-body">
               <div class="feat-name">Pasta por artista/canal</div>
-              <div class="feat-desc">Organiza os arquivos em subpastas com o nome do artista ou canal automaticamente.</div>
+              <div class="feat-desc">Dentro de cada tipo, organiza os arquivos em subpastas com o nome do artista ou canal automaticamente.</div>
             </div>
           </div>
           <div class="feat-item">
@@ -415,6 +425,34 @@
             <div class="feat-body">
               <div class="feat-name">Pular duplicados</div>
               <div class="feat-desc">Verifica o histórico antes de baixar — se o link já foi baixado, pula automaticamente.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Vídeo & Legenda -->
+      <div class="feat-section">
+        <div class="feat-section-title">Vídeo &amp; Legenda</div>
+        <div class="feat-list">
+          <div class="feat-item">
+            <span class="feat-icon">💬</span>
+            <div class="feat-body">
+              <div class="feat-name">Legenda nativa</div>
+              <div class="feat-desc">Baixa a legenda já disponível no vídeo (quando existir), direto pela aba Vídeo/Legenda.</div>
+            </div>
+          </div>
+          <div class="feat-item">
+            <span class="feat-icon">🤖</span>
+            <div class="feat-body">
+              <div class="feat-name">Legenda por IA (Whisper)</div>
+              <div class="feat-desc">Transcreve o áudio do vídeo localmente, mesmo sem legenda disponível, com tradução automática se o idioma escolhido for diferente do falado.</div>
+            </div>
+          </div>
+          <div class="feat-item">
+            <span class="feat-icon">📝</span>
+            <div class="feat-body">
+              <div class="feat-name">Criar Legenda para vídeo local</div>
+              <div class="feat-desc">Gere legenda com Whisper para um vídeo que já está no seu computador — sem baixar nada. Escolha o arquivo pelo botão ou arraste-o direto pra janela.</div>
             </div>
           </div>
         </div>
@@ -457,6 +495,13 @@
             <div class="feat-body">
               <div class="feat-name">Drag & drop de links</div>
               <div class="feat-desc">Arraste um link direto do navegador para a janela do app e ele será preenchido automaticamente.</div>
+            </div>
+          </div>
+          <div class="feat-item">
+            <span class="feat-icon">🖱</span>
+            <div class="feat-body">
+              <div class="feat-name">Colar com clique direito</div>
+              <div class="feat-desc">Clique com o botão direito no campo de link para colar automaticamente o que estiver na área de transferência.</div>
             </div>
           </div>
           <div class="feat-item">
@@ -546,11 +591,11 @@
           <div class="radio-group">
             <label class="radio-pill">
               <input type="radio" name="subtitleMode" value="native" checked
-                onchange="App.onSubtitleModeChange()"> 💬 Legenda nativa
+                onchange="App.onSubtitleModeChange()"> ❝ Legenda nativa
             </label>
             <label class="radio-pill">
               <input type="radio" name="subtitleMode" value="whisper"
-                onchange="App.onSubtitleModeChange()"> 🤖 Whisper (IA)
+                onchange="App.onSubtitleModeChange()"> ⚙ Whisper (IA)
             </label>
           </div>
         </div>
@@ -616,10 +661,10 @@
 
       <!-- Info contextual (troca conforme o modo) -->
       <div id="subtitleNativeInfo" class="subtitle-info-hint">
-        💬 Só funciona se o vídeo já tiver legenda disponível. O arquivo .srt é salvo na mesma pasta do vídeo.
+        ❝ Só funciona se o vídeo já tiver legenda disponível. O arquivo .srt é salvo na mesma pasta do vídeo.
       </div>
       <div id="subtitleWhisperInfo" class="subtitle-info-hint" style="display:none">
-        🤖 <strong>Primeira execução:</strong> o modelo será baixado automaticamente (75 MB a 3 GB). Requer <code>pip install openai-whisper</code>.
+        ⚙ <strong>Primeira execução:</strong> o modelo será baixado automaticamente (75 MB a 3 GB). Requer <code>pip install openai-whisper</code>.
       </div>
 
       <!-- Progresso — reaproveita o mesmo componente visual da fila de Download -->
@@ -671,6 +716,92 @@
           <p class="info-panel-title">Como funciona a tradução</p>
           <p class="info-panel-text">O app detecta automaticamente o idioma falado no vídeo. Se o idioma escolhido para a legenda for diferente do idioma falado, o texto é traduzido automaticamente após a transcrição, usando um serviço gratuito de tradução. Isso pode ocasionalmente perder nuances, expressões idiomáticas ou gírias, e depende de conexão com a internet.</p>
 
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ── TAB: CRIAR LEGENDA ── -->
+    <section class="tab-panel" id="tab-caption">
+
+      <div class="page-header">
+        <div class="page-eyebrow">Legenda local</div>
+        <h1>Criar legenda para um vídeo</h1>
+        <p>Selecione um vídeo já salvo no seu computador e gere a legenda com IA (Whisper)</p>
+      </div>
+
+      <!-- Arquivo -->
+      <div class="section-block">
+        <div class="card-label">Vídeo</div>
+        <div class="url-row">
+          <div class="input-url" id="captionFileName" style="display:flex;align-items:center;color:var(--main-sub)">
+            Nenhum arquivo selecionado
+          </div>
+          <button class="btn-icon" id="btnChooseVideo" onclick="App.chooseVideoFile()" title="Escolher vídeo">❐</button>
+        </div>
+        <div class="drop-zone-hint">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="22" height="22">
+            <path d="M12 3v12M8 11l4 4 4-4" stroke="#c0c0c0" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <path d="M4 17v1a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-1" stroke="#c0c0c0" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+          <span>Ou arraste um arquivo de vídeo aqui</span>
+        </div>
+      </div>
+
+      <hr class="section-divider">
+
+      <!-- Configurações -->
+      <div class="section-block">
+        <div class="card-label">Configurações</div>
+
+        <div class="opt-row">
+          <div class="opt-label">Modelo</div>
+          <div class="radio-group">
+            <label class="radio-pill"><input type="radio" name="captionModel" value="tiny"> tiny ~75MB</label>
+            <label class="radio-pill"><input type="radio" name="captionModel" value="base" checked> base ~150MB</label>
+            <label class="radio-pill"><input type="radio" name="captionModel" value="small"> small ~470MB</label>
+            <label class="radio-pill"><input type="radio" name="captionModel" value="medium"> medium ~1.5GB</label>
+            <label class="radio-pill"><input type="radio" name="captionModel" value="large"> large ~3GB</label>
+          </div>
+        </div>
+        <div class="opt-row">
+          <div class="opt-label">Idioma da legenda</div>
+          <div class="radio-group">
+            <label class="radio-pill"><input type="radio" name="captionLang" value="pt" checked> PT</label>
+            <label class="radio-pill"><input type="radio" name="captionLang" value="en"> EN</label>
+            <label class="radio-pill"><input type="radio" name="captionLang" value="es"> ES</label>
+            <label class="radio-pill"><input type="radio" name="captionLang" value="fr"> FR</label>
+            <label class="radio-pill"><input type="radio" name="captionLang" value="de"> DE</label>
+            <label class="radio-pill"><input type="radio" name="captionLang" value="ja"> JA</label>
+            <label class="radio-pill"><input type="radio" name="captionLang" value="zh"> ZH</label>
+            <label class="radio-pill"><input type="radio" name="captionLang" value="it"> IT</label>
+            <label class="radio-pill"><input type="radio" name="captionLang" value="ko"> KO</label>
+            <label class="radio-pill"><input type="radio" name="captionLang" value="ru"> RU</label>
+          </div>
+        </div>
+      </div>
+
+      <hr class="section-divider">
+
+      <div class="btn-row">
+        <button class="btn-primary" id="btnCaption" onclick="App.generateCaption()" disabled>
+          ✎ Gerar legenda
+        </button>
+      </div>
+
+      <div class="subtitle-info-hint">
+        ⚙ O arquivo original não é alterado nem movido — o .srt é salvo na mesma pasta, com o mesmo nome do vídeo.
+      </div>
+
+      <!-- Progresso -->
+      <div id="captionProgressWrap" style="display:none; margin-top:18px">
+        <div class="queue-card" id="captionProgressCard" data-status="baixando">
+          <div class="queue-icon" id="captionProgIcon">✎</div>
+          <div class="queue-info">
+            <div class="queue-titulo" id="captionProgTitulo">Preparando…</div>
+            <div class="queue-meta" id="captionProgMeta"></div>
+            <div class="queue-detalhe" id="captionProgDetalhe"></div>
+          </div>
         </div>
       </div>
 
@@ -799,7 +930,7 @@
       <pre id="logModalBody" class="log-modal-pre"></pre>
     </div>
     <div class="log-modal-actions">
-      <button class="popup-btn" id="logCopyBtn" onclick="App.copyLog()" style="border-radius:0">📋 Copiar</button>
+      <button class="popup-btn" id="logCopyBtn" onclick="App.copyLog()" style="border-radius:0">⎘ Copiar</button>
       <button class="popup-btn log-close-btn" onclick="App.closeLogModal()" style="border-radius:0 0 18px 0">
         <span class="log-close-icon">✕</span>
         Fechar

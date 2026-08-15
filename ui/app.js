@@ -12,6 +12,8 @@ const App = {
   queueRunning: false,
   queueActive: null,
   subtitleActive: false,
+  captionActive: false,
+  captionFilePath: null,
   logHistory: [],
 
   /* ══════════════════════════════════════════════════════
@@ -75,6 +77,10 @@ const App = {
           const detalhe = document.getElementById('subtitleProgDetalhe')
           if (detalhe) detalhe.textContent = data.msg || ''
         }
+        if (this.captionActive) {
+          const detalhe = document.getElementById('captionProgDetalhe')
+          if (detalhe) detalhe.textContent = data.msg || ''
+        }
         if (!this.queueActive) break
         const card = document.querySelector(`.queue-card[data-id="${this.queueActive}"]`)
         if (card) {
@@ -103,7 +109,7 @@ const App = {
           const detalhe = document.getElementById('subtitleProgDetalhe')
           const btn = document.getElementById('btnSubtitle')
           if (card) card.dataset.status = data.ok ? 'concluido' : 'erro'
-          if (icon) icon.textContent = data.ok ? '✅' : '❌'
+          if (icon) icon.textContent = data.ok ? '✓' : '✕'
           if (bar) bar.style.width = data.ok ? '100%' : (bar.style.width || '0%')
           if (barTrack) barTrack.style.display = data.ok ? 'none' : 'block'
           if (detalhe) detalhe.textContent = data.ok
@@ -112,11 +118,33 @@ const App = {
           if (btn) btn.disabled = false
           this.subtitleActive = false
         }
+        if (this.captionActive) {
+          const card = document.getElementById('captionProgressCard')
+          const icon = document.getElementById('captionProgIcon')
+          const detalhe = document.getElementById('captionProgDetalhe')
+          const btn = document.getElementById('btnCaption')
+          if (card) card.dataset.status = data.ok ? 'concluido' : 'erro'
+          if (icon) icon.textContent = data.ok ? '✓' : '✕'
+          if (detalhe) detalhe.textContent = data.ok
+            ? 'Concluído! O .srt foi salvo ao lado do vídeo.'
+            : (data.error || 'Erro desconhecido.')
+          if (btn) btn.disabled = false
+          this.captionActive = false
+        }
         break
       }
       case 'history_update':
         this.prependHistoryItem(data.item)
         break
+      case 'caption_file_dropped': {
+        this.tab('caption')
+        this.captionFilePath = data.path
+        const nameEl = document.getElementById('captionFileName')
+        if (nameEl) nameEl.textContent = data.nome
+        const btn = document.getElementById('btnCaption')
+        if (btn) btn.disabled = false
+        break
+      }
       case 'log': {
         const time = new Date().toLocaleTimeString('pt-BR', { hour12: false })
         this.logHistory.push(`[${time}] ${data.msg}`)
@@ -323,7 +351,7 @@ const App = {
     try {
       await navigator.clipboard.writeText(this.logHistory.join('\n'))
       const btn = document.getElementById('logCopyBtn')
-      if (btn) { const orig = btn.textContent; btn.textContent = '✅ Copiado!'; setTimeout(() => btn.textContent = orig, 1500) }
+      if (btn) { const orig = btn.textContent; btn.textContent = '✓ Copiado!'; setTimeout(() => btn.textContent = orig, 1500) }
     } catch (_) {}
   },
 
@@ -373,8 +401,8 @@ const App = {
       const acoes = source === 'youtube'
         ? `
           <div class="result-actions">
-            <button class="btn-down-sm" data-url="${this._esc(r.url)}" data-tipo="musica">🎵 Áudio</button>
-            <button class="btn-down-sm" data-url="${this._esc(r.url)}" data-tipo="video">🎬 Vídeo</button>
+            <button class="btn-down-sm" data-url="${this._esc(r.url)}" data-tipo="musica">♪ Áudio</button>
+            <button class="btn-down-sm" data-url="${this._esc(r.url)}" data-tipo="video">▶ Vídeo</button>
           </div>
         `
         : `
@@ -437,7 +465,7 @@ const App = {
   renderHistoryEmpty() {
     document.getElementById('historyList').innerHTML = `
       <div class="empty">
-        <span class="emoji">🎵</span>
+        <span class="emoji">♪</span>
         Nenhum download ainda.<br>Baixe sua primeira música!
       </div>
     `
@@ -464,7 +492,7 @@ const App = {
         <div class="hist-title">${this._esc((item.titulo || '').substring(0, 52))}</div>
         <div class="hist-meta">${this._esc(item.qualidade || '')} · ${this._esc(item.data || '')}</div>
       </div>
-      ${pasta ? `<button class="hist-open" data-path="${this._esc(pasta)}">📂</button>` : ''}
+      ${pasta ? `<button class="hist-open" data-path="${this._esc(pasta)}">↗</button>` : ''}
     `
     if (pasta) {
       card.querySelector('.hist-open').addEventListener('click', async () => {
@@ -497,7 +525,7 @@ const App = {
   },
 
   _makeQueueCard(item) {
-    const icons = { aguardando: '⏳', baixando: '⬇', concluido: '✅', erro: '❌' }
+    const icons = { aguardando: '◌', baixando: '⬇', concluido: '✓', erro: '✕' }
     const card  = document.createElement('div')
     card.className  = 'queue-card'
     card.dataset.id = item.id
@@ -514,7 +542,7 @@ const App = {
       ? ''
       : `<button class="queue-remove" onclick="App.removeFromQueue('${this._esc(item.id)}')">✕</button>`
     card.innerHTML = `
-      <div class="queue-icon">${icons[item.status] || '⏳'}</div>
+      <div class="queue-icon">${icons[item.status] || '◌'}</div>
       <div class="queue-info">
         <div class="queue-titulo">${this._esc(item.titulo)}</div>
         <div class="queue-meta">${this._esc(this._queueMeta(item.params))}</div>
@@ -531,9 +559,9 @@ const App = {
   },
 
   _queueMeta(params) {
-    const prefix = params.playlist ? '📋 Playlist · ' : ''
-    if (params.tipo === 'video') return `${prefix}🎬 ${params.resolucao || '720'}p`
-    return `${prefix}🎵 ${(params.formato || 'mp3').toUpperCase()} · ${params.qualidade || '192'}kbps`
+    const prefix = params.playlist ? '☰ Playlist · ' : ''
+    if (params.tipo === 'video') return `${prefix}▶ ${params.resolucao || '720'}p`
+    return `${prefix}♪ ${(params.formato || 'mp3').toUpperCase()} · ${params.qualidade || '192'}kbps`
   },
 
   _shortUrl(url) {
@@ -645,7 +673,7 @@ const App = {
     if (card) card.dataset.status = 'baixando'
     if (icon) icon.textContent = '⬇'
     if (titulo) titulo.textContent = 'Preparando…'
-    if (meta) meta.textContent = mode === 'whisper' ? '🤖 Whisper (IA)' : '💬 Legenda nativa'
+    if (meta) meta.textContent = mode === 'whisper' ? '⚙ Whisper (IA)' : '❝ Legenda nativa'
     if (barTrack) barTrack.style.display = 'block'
     if (bar) bar.style.width = '0%'
     if (detalhe) detalhe.textContent = ''
@@ -663,17 +691,66 @@ const App = {
       }
       if (!res.ok) {
         if (card) card.dataset.status = 'erro'
-        if (icon) icon.textContent = '❌'
+        if (icon) icon.textContent = '✕'
         if (detalhe) detalhe.textContent = res.error || 'Erro desconhecido.'
         btn.disabled = false
         this.subtitleActive = false
       }
     } catch (e) {
       if (card) card.dataset.status = 'erro'
-      if (icon) icon.textContent = '❌'
+      if (icon) icon.textContent = '✕'
       if (detalhe) detalhe.textContent = 'Erro ao iniciar: ' + e.message
       btn.disabled = false
       this.subtitleActive = false
+    }
+  },
+
+  async chooseVideoFile() {
+    const r = await window.pywebview.api.choose_video_dialog()
+    if (r.ok) {
+      this.captionFilePath = r.path
+      document.getElementById('captionFileName').textContent = r.nome
+      document.getElementById('btnCaption').disabled = false
+    }
+  },
+
+  async generateCaption() {
+    if (!this.captionFilePath) { alert('Escolha um vídeo primeiro.'); return }
+    const model = document.querySelector('input[name="captionModel"]:checked').value
+    const lang  = document.querySelector('input[name="captionLang"]:checked').value
+    const btn = document.getElementById('btnCaption')
+
+    this.captionActive = true
+    const wrap = document.getElementById('captionProgressWrap')
+    const card = document.getElementById('captionProgressCard')
+    const icon = document.getElementById('captionProgIcon')
+    const titulo = document.getElementById('captionProgTitulo')
+    const meta = document.getElementById('captionProgMeta')
+    const detalhe = document.getElementById('captionProgDetalhe')
+
+    if (wrap) wrap.style.display = 'block'
+    if (card) card.dataset.status = 'baixando'
+    if (icon) icon.textContent = '✎'
+    if (titulo) titulo.textContent = 'Preparando…'
+    if (meta) meta.textContent = `⚙ Whisper (IA) · ${model}`
+    if (detalhe) detalhe.textContent = ''
+    btn.disabled = true
+
+    try {
+      const res = await window.pywebview.api.transcribe_whisper_local(this.captionFilePath, lang, model)
+      if (!res.ok) {
+        if (card) card.dataset.status = 'erro'
+        if (icon) icon.textContent = '✕'
+        if (detalhe) detalhe.textContent = res.error || 'Erro desconhecido.'
+        btn.disabled = false
+        this.captionActive = false
+      }
+    } catch (e) {
+      if (card) card.dataset.status = 'erro'
+      if (icon) icon.textContent = '✕'
+      if (detalhe) detalhe.textContent = 'Erro ao iniciar: ' + e.message
+      btn.disabled = false
+      this.captionActive = false
     }
   },
 }
@@ -761,7 +838,7 @@ document.addEventListener('keydown', async (e) => {
   document.addEventListener('dragenter', (e) => {
     // Só mostra o overlay se o item arrastado contém um link/texto
     const tipos = e.dataTransfer?.types || []
-    const temLink = tipos.includes('text/uri-list') || tipos.includes('text/plain')
+    const temLink = tipos.includes('text/uri-list') || tipos.includes('text/plain') || tipos.includes('Files')
     if (!temLink) return
     dragDepth++
     overlay.classList.add('drop-active')
@@ -795,6 +872,29 @@ document.addEventListener('keydown', async (e) => {
     input.dispatchEvent(new Event('input'))
     input.focus()
   })
+})()
+
+/* ── Clique direito no campo de link: cola automaticamente ─── */
+;(function () {
+  function attachRightClickPaste(id) {
+    const el = document.getElementById(id)
+    if (!el || el._rightClickPasteBound) return
+    el._rightClickPasteBound = true
+    el.addEventListener('contextmenu', async (e) => {
+      e.preventDefault()
+      try {
+        const texto = await navigator.clipboard.readText()
+        if (texto && texto.trim()) {
+          el.value = texto.trim()
+          el.dispatchEvent(new Event('input'))
+        }
+      } catch (_) {
+        // Permissão de clipboard negada — ignora silenciosamente
+      }
+    })
+  }
+  attachRightClickPaste('urlInput')
+  attachRightClickPaste('subtitleUrl')
 })()
 
 /* ── Extras para v3 UI ─────────────────────────────── */
@@ -845,7 +945,7 @@ App.detectUrlType = function(url) {
 
   if (!isKnown) {
     const hints = []
-    if (isPlaylist) hints.push('📋 Playlist detectada — marcada automaticamente')
+    if (isPlaylist) hints.push('☰ Playlist detectada — marcada automaticamente')
     return { tipo: null, bloqueados: [], isPlaylist, hint: hints.join(' \xB7 ') }
   }
 
@@ -856,13 +956,13 @@ App.detectUrlType = function(url) {
   if (isAudioOnly) {
     const siteName = hostname.split('.').slice(-2).join('.')
     const label = siteName.charAt(0).toUpperCase() + siteName.slice(1)
-    hints.push('🎵 ' + label + ' detectado — v\xEDdeo n\xE3o dispon\xEDvel')
+    hints.push('♪ ' + label + ' detectado — v\xEDdeo n\xE3o dispon\xEDvel')
     bloqueados = ['video']
     tipo = 'musica'
   }
 
   if (isPlaylist) {
-    hints.push('📋 Playlist detectada — marcada automaticamente')
+    hints.push('☰ Playlist detectada — marcada automaticamente')
   }
 
   return { tipo, bloqueados, isPlaylist, hint: hints.join(' \xB7 ') }
