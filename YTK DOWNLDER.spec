@@ -13,22 +13,33 @@ for _f in ('bin/ffmpeg.exe', 'bin/ffprobe.exe'):
             "de gerar o instalador."
         )
 
-datas = [('ui', 'ui')]
+datas = [('ui', 'ui'), ('icon.ico', '.')]
 binaries = [
     ('bin/ffmpeg.exe', 'bin'),
     ('bin/ffprobe.exe', 'bin'),
 ]
 hiddenimports = ['_cffi_backend']
 
-# whisper e curl_cffi carregam arquivos internos (modelo/tokenizer do Whisper,
-# biblioteca nativa do curl_cffi) que o PyInstaller não detecta sozinho —
-# funcionam no ambiente de dev (Python "de verdade" instalado), mas quebram
-# silenciosamente no .exe empacotado sem isso.
-for _pkg in ('whisper', 'curl_cffi'):
-    _pkg_datas, _pkg_binaries, _pkg_hiddenimports = collect_all(_pkg)
-    datas += _pkg_datas
-    binaries += _pkg_binaries
-    hiddenimports += _pkg_hiddenimports
+# Pacotes que guardam arquivos internos (assets do Whisper, .dll do curl_cffi,
+# tabelas do tiktoken, runtime do numba) que o PyInstaller não detecta sozinho.
+# Funcionam no ambiente de dev e quebram silenciosamente só no .exe do usuário.
+for _pkg in ('whisper', 'curl_cffi', 'tiktoken', 'numba', 'llvmlite'):
+    try:
+        _d, _b, _h = collect_all(_pkg)
+        datas += _d
+        binaries += _b
+        hiddenimports += _h
+    except Exception as _e:
+        print(f"AVISO: não foi possível coletar '{_pkg}': {_e}")
+
+# Bibliotecas pesadas que nada no app usa — sem excluir, entram de carona
+# via dependências do torch e incham o instalador em centenas de MB.
+excludes = [
+    'tkinter', 'matplotlib', 'scipy', 'pandas', 'sklearn', 'cv2',
+    'PyQt5', 'PyQt6', 'PySide2', 'PySide6', 'wx',
+    'IPython', 'jupyter', 'notebook', 'pytest',
+    'torchvision', 'torchaudio', 'tensorflow',
+]
 
 a = Analysis(
     ['app.py'],
@@ -39,7 +50,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=excludes,
     noarchive=False,
     optimize=0,
 )
@@ -54,7 +65,9 @@ exe = EXE(
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
+    # UPX corrompe DLLs nativas do PyTorch e dispara falso positivo de
+    # antivírus. O ganho de tamanho não compensa um .exe que não abre.
+    upx=False,
     console=False,
     disable_windowed_traceback=False,
     argv_emulation=False,
@@ -68,7 +81,7 @@ coll = COLLECT(
     a.binaries,
     a.datas,
     strip=False,
-    upx=True,
+    upx=False,
     upx_exclude=[],
     name='YTK DOWNLDER',
 )

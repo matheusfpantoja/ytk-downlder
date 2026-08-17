@@ -324,6 +324,11 @@ const App = {
           alert('Horário de recorte inválido.\n\nUse mm:ss (ex: 1:30) ou hh:mm:ss (ex: 0:01:30).')
           return
         }
+        const _seg = (t) => t.split(':').reduce((acc, v) => acc * 60 + parseInt(v, 10), 0)
+        if (ini && fim && _seg(fim) <= _seg(ini)) {
+          alert('O fim do recorte precisa ser maior que o início.')
+          return
+        }
         if (!ini && !fim) {
           alert('O recorte está ativado mas nenhum horário foi preenchido.')
           return
@@ -816,6 +821,8 @@ const App = {
         if (icon) icon.textContent = '✕'
         if (detalhe) detalhe.textContent = res.error || 'Erro desconhecido.'
         btn.disabled = false
+        const cancelBtn = document.getElementById('subtitleCancelBtn')
+        if (cancelBtn) cancelBtn.style.display = 'none'
         this.subtitleActive = false
       }
     } catch (e) {
@@ -823,6 +830,8 @@ const App = {
       if (icon) icon.textContent = '✕'
       if (detalhe) detalhe.textContent = 'Erro ao iniciar: ' + e.message
       btn.disabled = false
+      const cancelBtn = document.getElementById('subtitleCancelBtn')
+      if (cancelBtn) cancelBtn.style.display = 'none'
       this.subtitleActive = false
     }
   },
@@ -873,6 +882,8 @@ const App = {
         if (icon) icon.textContent = '✕'
         if (detalhe) detalhe.textContent = res.error || 'Erro desconhecido.'
         btn.disabled = false
+        const cancelBtnC = document.getElementById('captionCancelBtn')
+        if (cancelBtnC) cancelBtnC.style.display = 'none'
         this.captionActive = false
       }
     } catch (e) {
@@ -880,6 +891,8 @@ const App = {
       if (icon) icon.textContent = '✕'
       if (detalhe) detalhe.textContent = 'Erro ao iniciar: ' + e.message
       btn.disabled = false
+      const cancelBtnC = document.getElementById('captionCancelBtn')
+      if (cancelBtnC) cancelBtnC.style.display = 'none'
       this.captionActive = false
     }
   },

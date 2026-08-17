@@ -10,6 +10,7 @@ build/
 dist/
 Output/
 OLD/
+redist/
 
 # Local
 .claude/settings.local.json

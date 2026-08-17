@@ -1,4 +1,3 @@
-# teste de integração
 """
 YouTube Downloader v3.0 — PyWebView
 Backend Python puro + Interface Web moderna
@@ -127,6 +126,25 @@ def get_ffmpeg_path():
     return shutil.which("ffmpeg")  # pode retornar None
 
 
+def registrar_ffmpeg_no_path():
+    """Coloca a pasta do FFmpeg embutido no PATH do processo.
+
+    IMPRESCINDÍVEL para o Whisper: ele carrega o áudio chamando o comando
+    'ffmpeg' do sistema via subprocess, e não tem como receber um caminho
+    explícito (diferente do yt-dlp, que aceita ffmpeg_location). Sem isto,
+    toda transcrição falha com [WinError 2] na máquina de um usuário que
+    não tenha FFmpeg instalado — e nunca falha na máquina de quem desenvolve.
+    """
+    caminho = get_ffmpeg_path()
+    if not caminho:
+        return None
+    pasta = os.path.dirname(caminho)
+    atual = os.environ.get("PATH", "")
+    if pasta and pasta.lower() not in atual.lower():
+        os.environ["PATH"] = pasta + os.pathsep + atual
+    return caminho
+
+
 # Reduz risco de erro 429 (Too Many Requests) do YouTube, especialmente
 # em downloads de legenda, que fazem uma requisição HTTP extra.
 YTDLP_SLEEP_OPTS = {
@@ -245,7 +263,9 @@ class Api:
 
     def set_window(self, w):
         self._win = w
-        self.ffmpeg_path = get_ffmpeg_path()
+        # registrar_ffmpeg_no_path devolve o caminho E injeta a pasta no PATH
+        # do processo, que é o que o Whisper precisa para funcionar.
+        self.ffmpeg_path = registrar_ffmpeg_no_path()
         if not self.ffmpeg_path:
             self._emit("log", {"msg": "⚠️ FFmpeg não encontrado nesta máquina. Sem ele, downloads de música e vídeo vão falhar."})
         threading.Thread(target=self._verificar_ytdlp, daemon=True).start()
@@ -571,8 +591,8 @@ class Api:
         import threading, tempfile, shutil
         def _run():
             if not WHISPER_OK:
-                self._emit('download_complete', {'ok': False, 'error': 'openai-whisper não está instalado. Rode: pip install openai-whisper'})
-                self._emit('log', {'msg': '❌ Whisper não instalado (pip install openai-whisper)'})
+                self._emit('download_complete', {'ok': False, 'error': 'O componente de transcrição por IA não pôde ser carregado nesta instalação. Reinstale o YTK DOWNLDER para restaurá-lo.'})
+                self._emit('log', {'msg': '❌ Componente Whisper indisponível nesta instalação.'})
                 return
             tmp_dir = tempfile.mkdtemp(prefix='ytk_whisper_')
             try:
@@ -698,8 +718,8 @@ class Api:
         import threading
         def _run():
             if not WHISPER_OK:
-                self._emit('download_complete', {'ok': False, 'error': 'openai-whisper não está instalado. Rode: pip install openai-whisper'})
-                self._emit('log', {'msg': '❌ Whisper não instalado (pip install openai-whisper)'})
+                self._emit('download_complete', {'ok': False, 'error': 'O componente de transcrição por IA não pôde ser carregado nesta instalação. Reinstale o YTK DOWNLDER para restaurá-lo.'})
+                self._emit('log', {'msg': '❌ Componente Whisper indisponível nesta instalação.'})
                 return
             try:
                 if not os.path.exists(path):
@@ -764,14 +784,12 @@ class Api:
         return {'ok': True}
 
     def cancel_download(self):
-        """Cancela a operação em andamento, seja da fila ou das abas de legenda.
-
-        Antes isso dependia de self.baixando, que só a aba Download setava —
-        por isso não havia como cancelar uma transcrição Whisper.
-        Todas as rotas zeram self._cancelar ao começar, então marcar aqui é seguro.
-        """
+        """Cancela a operação em andamento, seja da fila ou das abas de legenda."""
         self._cancelar = True
         self._emit("log", {"msg": "⏹ Cancelamento solicitado…"})
+        # Durante a conversão/pós-processamento o cancelamento só surte efeito
+        # ao fim da etapa atual — sem este aviso, o botão parece não funcionar.
+        self._emit("status", {"msg": "⏹ Cancelando… (aguarde a etapa atual terminar)"})
         return {"ok": True}
 
     def _friendly_error(self, e):
@@ -1186,6 +1204,9 @@ def _bind_drop_events(window):
 
 
 if __name__ == "__main__":
+    # Antes de qualquer coisa: garante que o FFmpeg embutido esteja visível
+    # no PATH, para bibliotecas que só sabem chamá-lo pelo nome (Whisper).
+    registrar_ffmpeg_no_path()
     api = Api()
 
     # Calcula a posição pra abrir centralizada na tela — não dá pra confiar
