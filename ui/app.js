@@ -31,6 +31,26 @@ const App = {
       this.pastaFull = d.pasta_full || ''
       document.getElementById('folderPath').textContent = d.pasta || '–'
 
+      // Logs emitidos antes de a página existir chegam aqui de uma vez
+      ;(d.logs_iniciais || []).forEach(msg => {
+        const time = new Date().toLocaleTimeString('pt-BR', { hour12: false })
+        this.logHistory.push(`[${time}] ${msg}`)
+      })
+
+      if (d.ffmpeg_ok === false) {
+        this.addWarning(
+          '<strong>FFmpeg não encontrado.</strong> Sem ele, downloads de música e vídeo vão falhar. ' +
+          'Baixe a versão "essentials", extraia e adicione a pasta bin ao PATH do Windows. ' +
+          '<button class="app-warn-link" onclick="App.abrirSiteFFmpeg()">Abrir página de download</button>'
+        )
+      }
+      if (d.pasta_indisponivel) {
+        this.addWarning(
+          '<strong>Pasta indisponível.</strong> A pasta configurada (' + this._esc(d.pasta_indisponivel) +
+          ') não pôde ser acessada. Os arquivos serão salvos na pasta padrão até você escolher outra em "Salvar em".'
+        )
+      }
+
       // Histórico inicial
       if (d.historico && d.historico.length > 0) {
         this.renderHistory(d.historico)
@@ -93,9 +113,15 @@ const App = {
         if (this.queueActive) {
           const item = this.queue.find(i => i.id === this.queueActive)
           if (item) {
-            item.status = data.ok ? 'concluido' : 'erro'
-            item.erro   = data.ok ? null : (data.error || 'Erro no download')
-            item.pct    = data.ok ? 1 : item.pct
+            if (data.skipped) {
+              item.status = 'pulado'
+              item.erro   = 'Já estava no histórico — nada foi baixado.'
+              item.pct    = 0
+            } else {
+              item.status = data.ok ? 'concluido' : 'erro'
+              item.erro   = data.ok ? null : (data.error || 'Erro no download')
+              item.pct    = data.ok ? 1 : item.pct
+            }
           }
           this.queueActive = null
           this.renderQueue()
@@ -116,7 +142,10 @@ const App = {
             ? 'Concluído! Arquivos salvos na pasta de downloads.'
             : (data.error || 'Erro desconhecido.')
           if (btn) btn.disabled = false
+          const cancelBtn = document.getElementById('subtitleCancelBtn')
+          if (cancelBtn) cancelBtn.style.display = 'none'
           this.subtitleActive = false
+          if (!this.queueActive) this.processQueue()
         }
         if (this.captionActive) {
           const card = document.getElementById('captionProgressCard')
@@ -129,7 +158,10 @@ const App = {
             ? 'Concluído! O .srt foi salvo ao lado do vídeo.'
             : (data.error || 'Erro desconhecido.')
           if (btn) btn.disabled = false
+          const cancelBtnC = document.getElementById('captionCancelBtn')
+          if (cancelBtnC) cancelBtnC.style.display = 'none'
           this.captionActive = false
+          if (!this.queueActive) this.processQueue()
         }
         break
       }
@@ -145,6 +177,9 @@ const App = {
         if (btn) btn.disabled = false
         break
       }
+      case 'warn':
+        this.addWarning(data.msg || '')
+        break
       case 'log': {
         const time = new Date().toLocaleTimeString('pt-BR', { hour12: false })
         this.logHistory.push(`[${time}] ${data.msg}`)
@@ -153,6 +188,27 @@ const App = {
         break
       }
     }
+  },
+
+  _ocupado() {
+    // Fila e abas de legenda compartilham os mesmos eventos do Python.
+    // Enquanto não houver identificação por operação, só uma pode rodar por vez —
+    // senão o "download_complete" de uma marca a outra como concluída.
+    return this.queueActive !== null || this.subtitleActive || this.captionActive
+  },
+
+  addWarning(html) {
+    const el = document.getElementById('appWarn')
+    if (!el) return
+    const div = document.createElement('div')
+    div.className = 'app-warn-item'
+    div.innerHTML = html
+    el.appendChild(div)
+    el.style.display = 'block'
+  },
+
+  abrirSiteFFmpeg() {
+    window.pywebview.api.open_url('https://www.gyan.dev/ffmpeg/builds/')
   },
 
   /* ══════════════════════════════════════════════════════
@@ -180,7 +236,9 @@ const App = {
   async toggleTheme() {
     this.tema = this.tema === 'dark' ? 'light' : 'dark'
     this.applyTheme(this.tema)
-    await window.pywebview.api.save_config({ tema: this.tema })
+    try {
+      await window.pywebview.api.save_config({ tema: this.tema })
+    } catch (e) { this._falhou('salvar tema', e) }
   },
 
   toggleSidebar() {
@@ -193,25 +251,31 @@ const App = {
      PASTA
      ══════════════════════════════════════════════════════ */
   async chooseFolder() {
-    const r = await window.pywebview.api.choose_folder()
-    if (r.ok) {
-      this.pastaFull = r.pasta_full
-      document.getElementById('folderPath').textContent = r.pasta
-    }
+    try {
+      const r = await window.pywebview.api.choose_folder()
+      if (r.ok) {
+        this.pastaFull = r.pasta_full
+        document.getElementById('folderPath').textContent = r.pasta
+      }
+    } catch (e) { this._falhou('escolher pasta', e) }
   },
 
   async openFolder() {
-    await window.pywebview.api.open_folder(this.pastaFull)
+    try {
+      await window.pywebview.api.open_folder(this.pastaFull)
+    } catch (e) { this._falhou('abrir pasta', e) }
   },
 
   /* ══════════════════════════════════════════════════════
      TXT
      ══════════════════════════════════════════════════════ */
   async loadTxt() {
-    const r = await window.pywebview.api.open_txt_dialog()
-    if (r.ok) {
-      document.getElementById('urlInput').value = 'TXT:' + r.path
-    }
+    try {
+      const r = await window.pywebview.api.open_txt_dialog()
+      if (r.ok) {
+        document.getElementById('urlInput').value = 'TXT:' + r.path
+      }
+    } catch (e) { this._falhou('carregar .txt', e) }
   },
 
   /* ══════════════════════════════════════════════════════
@@ -252,6 +316,27 @@ const App = {
       const urls = raw.split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('#'))
       if (!urls.length) return
 
+      if (document.getElementById('trimCheck')?.checked) {
+        const re = /^\d{1,2}(:\d{1,2}){1,2}$/
+        const ini = document.getElementById('trimStart').value.trim()
+        const fim = document.getElementById('trimEnd').value.trim()
+        if ((ini && !re.test(ini)) || (fim && !re.test(fim))) {
+          alert('Horário de recorte inválido.\n\nUse mm:ss (ex: 1:30) ou hh:mm:ss (ex: 0:01:30).')
+          return
+        }
+        if (!ini && !fim) {
+          alert('O recorte está ativado mas nenhum horário foi preenchido.')
+          return
+        }
+      }
+      if (document.getElementById('chkPlaylist')?.checked) {
+        const ok = confirm(
+          'A opção "Baixar playlist inteira" está marcada.\n\n' +
+          'Isso pode baixar dezenas ou centenas de arquivos e demorar bastante.\n\n' +
+          'Deseja continuar?'
+        )
+        if (!ok) return
+      }
       const baseParams = this._buildParams()
       urls.forEach(url => {
         this.queue.push({
@@ -373,7 +458,16 @@ const App = {
     list.innerHTML     = ''
 
     const source = document.querySelector('input[name="searchSource"]:checked')?.value || 'youtube'
-    const results = await window.pywebview.api.search_youtube(q, source)
+    let results = []
+    try {
+      results = await window.pywebview.api.search_youtube(q, source)
+    } catch (e) {
+      btn.disabled = false
+      btn.textContent = 'Buscar'
+      status.textContent = 'Erro ao buscar. Veja os Logs para detalhes.'
+      this._falhou('busca', e)
+      return
+    }
 
     btn.disabled    = false
     btn.textContent = 'Buscar'
@@ -504,8 +598,10 @@ const App = {
 
   async clearHistory() {
     if (!confirm('Limpar todo o histórico de downloads?')) return
-    await window.pywebview.api.clear_history()
-    this.renderHistoryEmpty()
+    try {
+      await window.pywebview.api.clear_history()
+      this.renderHistoryEmpty()
+    } catch (e) { this._falhou('limpar histórico', e) }
   },
 
   /* ══════════════════════════════════════════════════════
@@ -522,10 +618,17 @@ const App = {
     section.style.display = 'block'
     list.innerHTML = ''
     this.queue.forEach(item => list.appendChild(this._makeQueueCard(item)))
+    const tit = document.querySelector('.queue-header-title')
+    if (tit) {
+      const pend = this.queue.filter(i => i.status === 'aguardando' || i.status === 'baixando').length
+      tit.textContent = pend
+        ? `Fila de downloads — ${pend} pendente${pend > 1 ? 's' : ''}`
+        : 'Fila de downloads'
+    }
   },
 
   _makeQueueCard(item) {
-    const icons = { aguardando: '◌', baixando: '⬇', concluido: '✓', erro: '✕' }
+    const icons = { aguardando: '◌', baixando: '⬇', concluido: '✓', erro: '✕', pulado: '⏭' }
     const card  = document.createElement('div')
     card.className  = 'queue-card'
     card.dataset.id = item.id
@@ -591,6 +694,12 @@ const App = {
   },
 
   async processQueue() {
+    // Espera a aba de legenda terminar antes de puxar o próximo item da fila.
+    // Quando ela terminar, o handle('download_complete') chama processQueue de novo.
+    if (this.subtitleActive || this.captionActive) {
+      this.queueRunning = false
+      return
+    }
     const item = this.queue.find(i => i.status === 'aguardando')
     if (!item) {
       this.queueRunning = false
@@ -637,6 +746,13 @@ const App = {
       .replace(/"/g,'&quot;')
   },
 
+  _falhou(onde, e) {
+    const time = new Date().toLocaleTimeString('pt-BR', { hour12: false })
+    this.logHistory.push(`[${time}] ❌ Falha em ${onde}: ${e?.message || e}`)
+    this._refreshLogModalIfOpen()
+    alert('Não foi possível completar a ação (' + onde + ').\n\nAbra "Logs" na barra lateral para ver o detalhe.')
+  },
+
   onSubtitleModeChange() {
     const mode = document.querySelector('input[name="subtitleMode"]:checked').value
     document.getElementById('subtitleNativeOpts').style.display  = mode === 'native'  ? '' : 'none'
@@ -656,6 +772,10 @@ const App = {
   async downloadSubtitle() {
     const url = (document.getElementById('subtitleUrl').value || '').trim()
     if (!url) { alert('Cole uma URL primeiro.'); return; }
+    if (this._ocupado()) {
+      alert('Já existe um download ou transcrição em andamento. Espere terminar (ou cancele) antes de começar outro.')
+      return
+    }
     const mode = document.querySelector('input[name="subtitleMode"]:checked').value
     const btn = document.getElementById('btnSubtitle')
 
@@ -675,6 +795,8 @@ const App = {
     if (titulo) titulo.textContent = 'Preparando…'
     if (meta) meta.textContent = mode === 'whisper' ? '⚙ Whisper (IA)' : '❝ Legenda nativa'
     if (barTrack) barTrack.style.display = 'block'
+    const cancelBtn = document.getElementById('subtitleCancelBtn')
+    if (cancelBtn) cancelBtn.style.display = ''
     if (bar) bar.style.width = '0%'
     if (detalhe) detalhe.textContent = ''
     btn.disabled = true
@@ -706,16 +828,22 @@ const App = {
   },
 
   async chooseVideoFile() {
-    const r = await window.pywebview.api.choose_video_dialog()
-    if (r.ok) {
-      this.captionFilePath = r.path
-      document.getElementById('captionFileName').textContent = r.nome
-      document.getElementById('btnCaption').disabled = false
-    }
+    try {
+      const r = await window.pywebview.api.choose_video_dialog()
+      if (r.ok) {
+        this.captionFilePath = r.path
+        document.getElementById('captionFileName').textContent = r.nome
+        document.getElementById('btnCaption').disabled = false
+      }
+    } catch (e) { this._falhou('escolher vídeo', e) }
   },
 
   async generateCaption() {
     if (!this.captionFilePath) { alert('Escolha um vídeo primeiro.'); return }
+    if (this._ocupado()) {
+      alert('Já existe um download ou transcrição em andamento. Espere terminar (ou cancele) antes de começar outro.')
+      return
+    }
     const model = document.querySelector('input[name="captionModel"]:checked').value
     const lang  = document.querySelector('input[name="captionLang"]:checked').value
     const btn = document.getElementById('btnCaption')
@@ -734,6 +862,8 @@ const App = {
     if (titulo) titulo.textContent = 'Preparando…'
     if (meta) meta.textContent = `⚙ Whisper (IA) · ${model}`
     if (detalhe) detalhe.textContent = ''
+    const cancelBtnC = document.getElementById('captionCancelBtn')
+    if (cancelBtnC) cancelBtnC.style.display = ''
     btn.disabled = true
 
     try {
@@ -763,52 +893,63 @@ if (window.pywebview) App.init()
 
 /* ── Atalhos de teclado globais ─────────────────────────── */
 document.addEventListener('keydown', async (e) => {
-  // Ignora quando estiver digitando em campos de texto
+  // Ignora quando estiver digitando em campos de texto — antes, Ctrl+D/H/F/S
+  // trocavam de aba no meio da digitação.
   const tag = document.activeElement?.tagName
   const digitando = tag === 'INPUT' || tag === 'TEXTAREA'
 
+  // key.toLowerCase(): com CapsLock ligado, e.key vem 'D' e nenhum atalho funcionava
+  const tecla = (e.key || '').toLowerCase()
+
+  // Escape → cancela operação em andamento (funciona mesmo digitando)
+  if (e.key === 'Escape' && (App.queueRunning || App.subtitleActive || App.captionActive)) {
+    e.preventDefault()
+    await App.cancelDownload()
+    return
+  }
+
+  if (!e.ctrlKey || digitando) return
+
   // Ctrl+D → aba Download
-  if (e.ctrlKey && e.key === 'd') {
+  if (tecla === 'd') {
     e.preventDefault()
     App.tab('download')
     return
   }
 
   // Ctrl+H → aba Histórico
-  if (e.ctrlKey && e.key === 'h') {
+  if (tecla === 'h') {
     e.preventDefault()
     App.tab('history')
     return
   }
 
   // Ctrl+F ou Ctrl+S → aba Busca + foco no campo
-  if (e.ctrlKey && (e.key === 'f' || e.key === 's')) {
+  if (tecla === 'f' || tecla === 's') {
     e.preventDefault()
     App.tab('search')
     setTimeout(() => document.getElementById('searchInput')?.focus(), 50)
     return
   }
 
-  // Escape → cancela download em andamento
-  if (e.key === 'Escape' && App.queueRunning) {
-    e.preventDefault()
-    await window.pywebview.api.cancel_download()
-    return
-  }
-
-  // Ctrl+V → colar URL e iniciar download (apenas fora de campos de texto)
-  if (e.ctrlKey && e.key === 'v' && !digitando) {
+  // Ctrl+V fora de campos → cola a URL e inicia o download
+  if (tecla === 'v') {
     e.preventDefault()
     try {
-      const texto = await navigator.clipboard.readText()
-      const urlValida = /^https?:\/\/(www\.)?(youtube\.com|youtu\.be|soundcloud\.com|bandcamp\.com|vimeo\.com|dailymotion\.com|twitch\.tv|music\.youtube\.com)/.test(texto.trim())
-      if (urlValida) {
-        App.tab('download')
-        document.getElementById('urlInput').value = texto.trim()
-        App.download()
+      const texto = (await navigator.clipboard.readText() || '').trim()
+      if (!/^https?:\/\//i.test(texto)) {
+        // Antes, links de sites suportados mas fora de uma lista curta eram
+        // ignorados sem nenhuma mensagem — parecia app travado.
+        alert('A área de transferência não contém um link.\n\nCopie o endereço do vídeo ou da música e tente de novo.')
+        return
       }
+      App.tab('download')
+      const input = document.getElementById('urlInput')
+      input.value = texto
+      input.dispatchEvent(new Event('input'))
+      App.download()
     } catch (_) {
-      // Permissão de clipboard negada — ignora silenciosamente
+      alert('Não foi possível ler a área de transferência.')
     }
     return
   }
@@ -836,11 +977,22 @@ document.addEventListener('keydown', async (e) => {
   }
 
   document.addEventListener('dragenter', (e) => {
-    // Só mostra o overlay se o item arrastado contém um link/texto
     const tipos = e.dataTransfer?.types || []
-    const temLink = tipos.includes('text/uri-list') || tipos.includes('text/plain') || tipos.includes('Files')
+    const temArquivo = tipos.includes('Files')
+    const temLink = tipos.includes('text/uri-list') || tipos.includes('text/plain') || temArquivo
     if (!temLink) return
     dragDepth++
+    // O texto do overlay dizia sempre "Solte o link aqui", mesmo ao arrastar
+    // um arquivo de vídeo do Explorer.
+    const txt = overlay.querySelector('.drop-overlay-text')
+    const sub = overlay.querySelector('.drop-overlay-sub')
+    if (temArquivo && !tipos.includes('text/uri-list')) {
+      if (txt) txt.textContent = 'Solte o vídeo aqui'
+      if (sub) sub.textContent = 'A legenda será gerada na aba Criar Legenda'
+    } else {
+      if (txt) txt.textContent = 'Solte o link aqui'
+      if (sub) sub.textContent = 'YouTube, SoundCloud, Vimeo e mais'
+    }
     overlay.classList.add('drop-active')
   })
 
@@ -945,7 +1097,7 @@ App.detectUrlType = function(url) {
 
   if (!isKnown) {
     const hints = []
-    if (isPlaylist) hints.push('☰ Playlist detectada — marcada automaticamente')
+    if (isPlaylist) hints.push('☰ Este link faz parte de uma playlist — marque a caixa abaixo se quiser baixar todos os itens')
     return { tipo: null, bloqueados: [], isPlaylist, hint: hints.join(' \xB7 ') }
   }
 
@@ -962,7 +1114,7 @@ App.detectUrlType = function(url) {
   }
 
   if (isPlaylist) {
-    hints.push('☰ Playlist detectada — marcada automaticamente')
+    hints.push('☰ Este link faz parte de uma playlist — marque a caixa abaixo se quiser baixar todos os itens')
   }
 
   return { tipo, bloqueados, isPlaylist, hint: hints.join(' \xB7 ') }
@@ -1004,7 +1156,9 @@ App.applyUrlDetection = function(resultado) {
     if (radio) radio.checked = true
   }
 
-  if (playlistChk) playlistChk.checked = !!resultado.isPlaylist
+  // NÃO marcar playlist automaticamente: todo link copiado de dentro de uma
+  // playlist do YouTube tem "&list=", e marcar sozinho fazia o usuário baixar
+  // centenas de vídeos sem querer. Só sugerimos pelo texto do hint.
 
   if (hintEl) hintEl.textContent = resultado.hint || ''
 

@@ -10,7 +10,7 @@ multiprocessing.freeze_support()
 
 import webview
 import yt_dlp
-from yt_dlp.utils import DownloadCancelled
+from yt_dlp.utils import DownloadCancelled, download_range_func
 import threading
 import json
 import os
@@ -19,6 +19,7 @@ import shutil
 import subprocess
 import sys
 import ssl
+import tempfile
 import urllib.request
 import urllib.parse
 from datetime import datetime
@@ -66,9 +67,49 @@ def _get_install_download_path():
         pass
     return os.path.join(os.path.expanduser("~"), "Músicas-YT")
 
-PASTA_PADRAO = _get_install_download_path()
+def _pasta_utilizavel(p):
+    """Testa se dá pra realmente criar/usar a pasta (drive removido, sem permissão etc)."""
+    try:
+        os.makedirs(p, exist_ok=True)
+        return os.path.isdir(p)
+    except Exception:
+        return False
+
+
+_pasta_escolhida = _get_install_download_path()
+if _pasta_utilizavel(_pasta_escolhida):
+    PASTA_PADRAO = _pasta_escolhida
+    PASTA_INDISPONIVEL = None
+else:
+    # A pasta gravada pelo instalador não existe mais (HD externo desconectado,
+    # drive removido, sem permissão). Nunca deixe isso derrubar o app antes da
+    # janela abrir — cai pro fallback e avisa o usuário depois, na interface.
+    PASTA_INDISPONIVEL = _pasta_escolhida
+    _fallback = os.path.join(os.path.expanduser("~"), "Músicas-YT")
+    PASTA_PADRAO = _fallback if _pasta_utilizavel(_fallback) else tempfile.gettempdir()
+
 HISTORICO_PATH = os.path.join(PASTA_PADRAO, ".historico.json")
 CONFIG_PATH    = os.path.join(PASTA_PADRAO, ".config.json")
+
+
+def _load_config():
+    try:
+        if os.path.exists(CONFIG_PATH):
+            with open(CONFIG_PATH, encoding="utf-8") as f:
+                return json.load(f)
+    except Exception:
+        pass
+    return {}
+
+
+def _write_config(cfg):
+    try:
+        os.makedirs(PASTA_PADRAO, exist_ok=True)
+        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
+        return True
+    except Exception:
+        return False
 
 
 def resource_path(rel):
@@ -104,11 +145,31 @@ def _map_lang_translate(code):
     return LANG_MAP_TRANSLATE.get(code, code)
 
 
+def _norm_url(url):
+    """Normaliza a URL para comparação de duplicados.
+
+    O usuário cola youtu.be/ID, watch?v=ID&list=..., com utm_source etc — e o
+    histórico grava a URL canônica devolvida pelo yt-dlp. Sem normalizar, o
+    "pular duplicados" quase nunca casava em download único.
+    """
+    if not url:
+        return ""
+    u = url.strip().lower()
+    m = re.search(r'(?:v=|youtu\.be/|/shorts/|/embed/)([a-z0-9_-]{11})', u)
+    if m:
+        return "yt:" + m.group(1)
+    u = u.split("?")[0].split("#")[0]
+    return u.rstrip("/")
+
+
 # ─── Histórico ────────────────────────────────────────────────
 
 class Historico:
     def __init__(self):
-        os.makedirs(PASTA_PADRAO, exist_ok=True)
+        try:
+            os.makedirs(PASTA_PADRAO, exist_ok=True)
+        except Exception:
+            pass
         self.itens = self._load()
 
     def _load(self):
@@ -121,8 +182,11 @@ class Historico:
         return []
 
     def save(self):
-        with open(HISTORICO_PATH, "w", encoding="utf-8") as f:
-            json.dump(self.itens, f, ensure_ascii=False, indent=2)
+        try:
+            with open(HISTORICO_PATH, "w", encoding="utf-8") as f:
+                json.dump(self.itens, f, ensure_ascii=False, indent=2)
+        except Exception:
+            pass
 
     def add(self, titulo, url, formato, qualidade, arquivo):
         self.itens.insert(0, {
@@ -134,8 +198,17 @@ class Historico:
         self.itens = self.itens[:500]
         self.save()
 
-    def has(self, url):
-        return any(i["url"] == url for i in self.itens)
+    def has(self, url, formato=None):
+        """Duplicado = mesma URL E mesmo formato. Quem baixou o MP3 e agora quer
+        o MP4 do mesmo link não está baixando duas vezes a mesma coisa."""
+        alvo = _norm_url(url)
+        fmt = (formato or "").lower()
+        for i in self.itens:
+            if _norm_url(i.get("url", "")) != alvo:
+                continue
+            if not fmt or (i.get("formato") or "").lower() == fmt:
+                return True
+        return False
 
     def clear(self):
         self.itens = []
@@ -154,23 +227,35 @@ class Api:
         self.historico     = Historico()
         self.baixando      = False
         self._cancelar     = False
-        self.pasta_destino = PASTA_PADRAO
+        # Restaura a última pasta escolhida pelo usuário (persistida no .config.json).
+        # Sem isso, a escolha se perde toda vez que o app fecha.
+        _cfg = _load_config()
+        _salva = _cfg.get("pasta")
+        self.pasta_destino = _salva if (_salva and os.path.isdir(_salva)) else PASTA_PADRAO
         self._win          = None
         self.ffmpeg_path   = None
         self._playlist_status = ""
-        os.makedirs(self.pasta_destino, exist_ok=True)
+        self._pulou = False
+        self._ui_ready = False
+        self._logs_pendentes = []
+        try:
+            os.makedirs(self.pasta_destino, exist_ok=True)
+        except Exception:
+            self.pasta_destino = PASTA_PADRAO
 
     def set_window(self, w):
         self._win = w
         self.ffmpeg_path = get_ffmpeg_path()
         if not self.ffmpeg_path:
-            self._emit("log", {"msg": "⚠️ FFmpeg não encontrado nesta máquina. Baixe em https://www.gyan.dev/ffmpeg/builds/ (build 'essentials'), extraia e adicione a pasta 'bin' ao PATH do Windows. Sem isso, downloads de música e vídeo vão falhar."})
+            self._emit("log", {"msg": "⚠️ FFmpeg não encontrado nesta máquina. Sem ele, downloads de música e vídeo vão falhar."})
         threading.Thread(target=self._verificar_ytdlp, daemon=True).start()
 
     def _verificar_ytdlp(self):
-        # Quando empacotado como .exe, sys.executable aponta para o próprio app —
-        # chamar sys.executable -m pip abriria infinitas janelas. Pula a atualização.
+        # No .exe empacotado não dá pra rodar pip (abriria janelas infinitas),
+        # mas um yt-dlp congelado quebra os downloads do YouTube em poucas semanas.
+        # Então, no .exe, ao menos avisamos que existe versão mais nova.
         if getattr(sys, "frozen", False):
+            self._checar_versao_ytdlp()
             return
         self._emit("log", {"msg": "Verificando atualizações do yt-dlp..."})
         try:
@@ -185,44 +270,80 @@ class Api:
         except Exception as e:
             self._emit("log", {"msg": f"Aviso: não foi possível verificar atualizações do yt-dlp ({e})"})
 
+    def _checar_versao_ytdlp(self):
+        """Compara a versão embutida com a última publicada. Só avisa, não atualiza."""
+        try:
+            from yt_dlp.version import __version__ as versao_local
+        except Exception:
+            return
+        try:
+            req = urllib.request.Request(
+                "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest",
+                headers={"User-Agent": "YTK-DOWNLDER"},
+            )
+            with urllib.request.urlopen(req, timeout=10) as resp:
+                versao_remota = json.loads(resp.read()).get("tag_name", "")
+        except Exception:
+            return
+        self._emit("log", {"msg": f"yt-dlp embutido: {versao_local} | mais recente: {versao_remota or '?'}"})
+        if versao_remota and versao_remota.strip() != versao_local.strip():
+            self._emit("warn", {"msg":
+                "<strong>Existe uma versão mais nova do motor de download (yt-dlp).</strong> "
+                f"Esta cópia usa a versão {versao_local}. Se downloads do YouTube começarem a falhar, "
+                "instale a versão mais recente do YTK DOWNLDER."
+            })
+
     # ── Comunicação Python → JS ──────────────────────────────
 
     def _emit(self, event, data=None):
-        """Dispara evento para o JavaScript."""
-        if self._win:
+        """Dispara evento para o JavaScript.
+
+        Antes de a página carregar não existe App no JS: qualquer evento emitido
+        nesse momento se perde. Logs emitidos cedo (aviso de FFmpeg, checagem do
+        yt-dlp) ficam guardados e são entregues quando a UI avisa que está pronta.
+        """
+        if event == "log" and not self._ui_ready:
+            self._logs_pendentes.append((data or {}).get("msg", ""))
+            return
+        if not self._win:
+            return
+        try:
             payload = json.dumps(data or {})
             self._win.evaluate_js(f'App.handle("{event}", {payload})')
+        except Exception:
+            pass
 
     # ── Inicialização ────────────────────────────────────────
 
     def get_initial_data(self):
         """Chamado pelo JS quando a página carrega."""
-        cfg = {}
-        try:
-            if os.path.exists(CONFIG_PATH):
-                with open(CONFIG_PATH) as f:
-                    cfg = json.load(f)
-        except Exception:
-            pass
+        cfg = _load_config()
+        self._ui_ready = True
+        logs = list(self._logs_pendentes)
+        self._logs_pendentes = []
         return {
-            "pasta":      self._short(self.pasta_destino),
-            "pasta_full": self.pasta_destino,
-            "tema":       cfg.get("tema", "light"),
-            "historico":  self.historico.itens[:100],
+            "pasta":              self._short(self.pasta_destino),
+            "pasta_full":         self.pasta_destino,
+            "tema":               cfg.get("tema", "light"),
+            "historico":          self.historico.itens[:100],
+            "ffmpeg_ok":          bool(self.ffmpeg_path),
+            "pasta_indisponivel": PASTA_INDISPONIVEL,
+            "logs_iniciais":      logs,
         }
 
-    def save_config(self, cfg):
-        os.makedirs(PASTA_PADRAO, exist_ok=True)
-        existing = {}
+    def open_url(self, url):
+        """Abre um link no navegador padrão do sistema (usado pelos avisos da UI)."""
         try:
-            if os.path.exists(CONFIG_PATH):
-                with open(CONFIG_PATH) as f:
-                    existing = json.load(f)
+            import webbrowser
+            webbrowser.open(url)
+            return True
         except Exception:
-            pass
+            return False
+
+    def save_config(self, cfg):
+        existing = _load_config()
         existing.update(cfg)
-        with open(CONFIG_PATH, "w") as f:
-            json.dump(existing, f)
+        _write_config(existing)
         return True
 
     # ── Pasta destino ────────────────────────────────────────
@@ -234,6 +355,10 @@ class Api:
         )
         if result:
             self.pasta_destino = result[0]
+            # Persiste a escolha — senão ela se perde ao fechar o app.
+            cfg = _load_config()
+            cfg["pasta"] = self.pasta_destino
+            _write_config(cfg)
             return {
                 "ok":        True,
                 "pasta":     self._short(self.pasta_destino),
@@ -279,6 +404,7 @@ class Api:
                     'subtitleslangs': [lang],
                     'subtitlesformat': formato,
                     'skip_download': False,
+                    'noplaylist': True,
                     'merge_output_format': 'mp4',
                     'ffmpeg_location': os.path.dirname(self.ffmpeg_path),
                     'progress_hooks': [self._hook],
@@ -295,10 +421,25 @@ class Api:
                     arquivo = info['requested_downloads'][0].get('filepath', '')
                 if not arquivo:
                     arquivo = os.path.join(pasta, 'Vídeos', info.get('uploader', 'Unknown'), f"{titulo}.mp4")
-                self.historico.add(titulo, url, 'SRT', lang.upper(), arquivo)
-                self._emit('download_complete', {'ok': True})
-                self._emit('log', {'msg': f'✅ Legenda baixada: {titulo}'})
+                # yt-dlp baixa o vídeo mesmo quando não existe legenda no idioma
+                # pedido. Sem checar isso, o app dizia "legenda baixada" sem .srt algum.
+                tem_legenda = bool(info.get('requested_subtitles'))
+                self.historico.add(titulo, url, 'SRT' if tem_legenda else 'MP4', lang.upper(), arquivo)
+                if tem_legenda:
+                    self._emit('download_complete', {'ok': True})
+                    self._emit('log', {'msg': f'✅ Legenda baixada: {titulo}'})
+                else:
+                    self._emit('download_complete', {
+                        'ok': False,
+                        'error': f'Este vídeo não tem legenda disponível em "{lang.upper()}". '
+                                 'O vídeo foi baixado normalmente. Para gerar a legenda mesmo assim, '
+                                 'use o modo "Whisper (IA)".'
+                    })
+                    self._emit('log', {'msg': f'⚠️ Sem legenda em {lang.upper()}: {titulo}'})
                 self._emit('history_update', {'item': self.historico.itens[0]})
+            except DownloadCancelled:
+                self._emit('download_complete', {'ok': False, 'error': 'Cancelado pelo usuário.'})
+                self._emit('log', {'msg': '⏹ Operação cancelada.'})
             except Exception as e:
                 if not self._cancelar:
                     erro_msg = self._friendly_error(e)
@@ -443,7 +584,10 @@ class Api:
                 outtmpl = os.path.join(tmp_dir, '%(title)s.%(ext)s')
                 opts_video = {
                     'outtmpl': outtmpl,
-                    'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/mp4',
+                    # Limite de 1080p: sem teto, um vídeo em 4K viraria vários GB
+                    # de download só para transcrever o áudio.
+                    'format': 'bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080]/mp4',
+                    'noplaylist': True,
                     'merge_output_format': 'mp4',
                     'ffmpeg_location': os.path.dirname(self.ffmpeg_path),
                     'progress_hooks': [self._hook],
@@ -454,10 +598,20 @@ class Api:
                 with yt_dlp.YoutubeDL(opts_video) as ydl:
                     info = ydl.extract_info(url, download=True)
                     titulo = info.get('title', url)
-                video_files = [f for f in os.listdir(tmp_dir) if f.endswith('.mp4')]
-                if not video_files:
-                    raise FileNotFoundError('Arquivo de vídeo não encontrado após download.')
-                video_path = os.path.join(tmp_dir, video_files[0])
+                # Pegar o caminho direto do yt-dlp é mais confiável que listar a
+                # pasta e torcer para o primeiro .mp4 ser o certo.
+                video_path = ''
+                if info.get('requested_downloads'):
+                    video_path = info['requested_downloads'][0].get('filepath', '')
+                if not video_path or not os.path.exists(video_path):
+                    video_files = [f for f in os.listdir(tmp_dir) if f.endswith('.mp4')]
+                    if not video_files:
+                        raise FileNotFoundError('Arquivo de vídeo não encontrado após download.')
+                    video_path = os.path.join(tmp_dir, video_files[0])
+                video_files = [os.path.basename(video_path)]
+
+                if self._cancelar:
+                    raise DownloadCancelled('Cancelado pelo usuário.')
 
                 self._emit('status', {'msg': f'Transcrevendo com Whisper ({model_name})…'})
                 self._emit('log', {'msg': f'🤖 Transcrevendo com Whisper ({model_name})…'})
@@ -466,6 +620,9 @@ class Api:
                 # word_timestamps=True permite recortar a legenda em blocos menores e sincronizados
                 result = model.transcribe(video_path, language=None, word_timestamps=True)
                 detected_lang = result.get('language', 'en')
+
+                if self._cancelar:
+                    raise DownloadCancelled('Cancelado pelo usuário.')
 
                 cues = self._chunk_words(result['segments'])
                 texts = [c['text'] for c in cues]
@@ -508,6 +665,9 @@ class Api:
                 self._emit('download_complete', {'ok': True})
                 self._emit('log', {'msg': f'✅ Transcrição concluída: {titulo}'})
                 self._emit('history_update', {'item': self.historico.itens[0]})
+            except DownloadCancelled:
+                self._emit('download_complete', {'ok': False, 'error': 'Cancelado pelo usuário.'})
+                self._emit('log', {'msg': '⏹ Operação cancelada.'})
             except Exception as e:
                 if not self._cancelar:
                     erro_msg = self._friendly_error(e)
@@ -552,6 +712,9 @@ class Api:
                 result = model.transcribe(path, language=None, word_timestamps=True)
                 detected_lang = result.get('language', 'en')
 
+                if self._cancelar:
+                    raise DownloadCancelled('Cancelado pelo usuário.')
+
                 cues = self._chunk_words(result['segments'])
                 texts = [c['text'] for c in cues]
 
@@ -588,6 +751,9 @@ class Api:
                 self._emit('download_complete', {'ok': True})
                 self._emit('log', {'msg': f'✅ Legenda local concluída: {titulo}'})
                 self._emit('history_update', {'item': self.historico.itens[0]})
+            except DownloadCancelled:
+                self._emit('download_complete', {'ok': False, 'error': 'Cancelado pelo usuário.'})
+                self._emit('log', {'msg': '⏹ Operação cancelada.'})
             except Exception as e:
                 if not self._cancelar:
                     erro_msg = self._friendly_error(e)
@@ -598,11 +764,15 @@ class Api:
         return {'ok': True}
 
     def cancel_download(self):
-        """Cancela o download em andamento (chamado pelo JS via Escape)."""
-        if self.baixando:
-            self._cancelar = True
-            return {"ok": True}
-        return {"ok": False}
+        """Cancela a operação em andamento, seja da fila ou das abas de legenda.
+
+        Antes isso dependia de self.baixando, que só a aba Download setava —
+        por isso não havia como cancelar uma transcrição Whisper.
+        Todas as rotas zeram self._cancelar ao começar, então marcar aqui é seguro.
+        """
+        self._cancelar = True
+        self._emit("log", {"msg": "⏹ Cancelamento solicitado…"})
+        return {"ok": True}
 
     def _friendly_error(self, e):
         """Traduz mensagens técnicas de erro do yt-dlp em algo que o usuário
@@ -626,18 +796,43 @@ class Api:
     def _download_thread(self, url, params):
         notificar = params.get("notificar", True)
         titulo_download = ""
+        self._pulou = False
         try:
             if url.startswith("TXT:"):
                 path = url[4:]
                 with open(path, "r", encoding="utf-8") as f:
                     links = [l.strip() for l in f if l.strip() and not l.startswith("#")]
                 self._emit("log", {"msg": f"📋 {len(links)} links encontrados"})
+                sucesso, falha = 0, 0
                 for i, link in enumerate(links):
                     self._emit("status", {"msg": f"Baixando {i+1} de {len(links)}…"})
-                    self._baixar_unico(link, params)
+                    self._emit("progress", {"pct": 0, "titulo": link[:52], "detalhe": f"Item {i+1} de {len(links)}"})
+                    try:
+                        self._baixar_unico(link, params)
+                        sucesso += 1
+                    except DownloadCancelled:
+                        # Cancelar deve parar a lista inteira, não só o item atual.
+                        raise
+                    except Exception as e:
+                        # Um link privado/removido no meio da lista não pode
+                        # abortar todos os outros.
+                        falha += 1
+                        self._emit("log", {"msg": f"  ⚠ Falhou ({link[:40]}…): {self._friendly_error(e)}"})
+                resumo = f"✅ Lista concluída: {sucesso} baixados"
+                if falha:
+                    resumo += f", {falha} com erro"
+                self._emit("log", {"msg": resumo})
+                self._pulou = False
             else:
                 titulo_download = self._baixar_unico(url, params) or ""
 
+            if self._pulou:
+                # Nada foi baixado: não pode mostrar "concluído" ou o usuário
+                # vai procurar um arquivo que não existe.
+                self._emit("download_complete", {"ok": True, "skipped": True})
+                self._emit("log",    {"msg": "⏭ Nada a baixar — já estava no histórico."})
+                self._emit("status", {"msg": "⏭ Já baixado"})
+                return
             self._emit("download_complete", {"ok": True})
             self._emit("log",    {"msg": "✅ Tudo pronto!"})
             self._emit("status", {"msg": "✅ Concluído!"})
@@ -665,8 +860,11 @@ class Api:
 
         is_playlist = params.get("playlist", False)
 
-        if not is_playlist and params.get("pular_duplicados") and self.historico.has(url):
+        fmt_alvo = "mp4" if params.get("tipo") == "video" else params.get("formato", "mp3")
+
+        if not is_playlist and params.get("pular_duplicados") and self.historico.has(url, fmt_alvo):
             self._emit("log", {"msg": f"⏭ Já baixado: {url[:45]}…"})
+            self._pulou = True
             return ""
 
         opts = self._build_opts(params)
@@ -694,7 +892,7 @@ class Api:
                 # colado na URL de cada item.
                 eurl = re.sub(r'([&?])list=[^&]*', '', eurl).rstrip('&?')
 
-                if params.get("pular_duplicados") and self.historico.has(eurl):
+                if params.get("pular_duplicados") and self.historico.has(eurl, fmt_alvo):
                     pulados += 1
                     self._emit("log", {"msg": f"  ⏭ Já baixado: {(entry.get('title') or eurl)[:45]}…"})
                     continue
@@ -746,8 +944,13 @@ class Api:
         # Separa Vídeos e Músicas já na raiz da pasta escolhida pelo usuário,
         # antes de organizar por artista/canal — evita misturar os dois tipos
         # na mesma pasta de artista.
+        # %(channel)s é nulo fora do YouTube — no SoundCloud/Bandcamp/Mixcloud
+        # isso criava pastas literalmente chamadas "NA". A cadeia de fallback
+        # tenta channel, depois uploader, depois artist, e por fim "Desconhecido".
         base_pasta = "Vídeos" if tipo == "video" else "Músicas"
-        tmpl   = f"{base_pasta}/%(channel)s/%(title)s.%(ext)s" if organizar else f"{base_pasta}/%(title)s.%(ext)s"
+        artista = "%(channel,uploader,artist|Desconhecido)s"
+        tmpl = (f"{base_pasta}/{artista}/%(title)s.%(ext)s" if organizar
+                else f"{base_pasta}/%(title)s.%(ext)s")
         output = os.path.join(self.pasta_destino, tmpl)
 
         opts = {
@@ -756,6 +959,10 @@ class Api:
             "noplaylist":     not is_playlist,
             "quiet":          True,
             "no_warnings":    True,
+            # Títulos muito longos estouram o limite de 260 caracteres do Windows
+            # e geram um erro incompreensível para o usuário.
+            "trim_file_name": 120,
+            "windowsfilenames": True,
             **YTDLP_SLEEP_OPTS,
         }
 
@@ -778,14 +985,19 @@ class Api:
                 opts["writethumbnail"] = True
                 opts["postprocessors"].append({"key": "EmbedThumbnail"})
 
+        # O recorte por postprocessor_args só tinha efeito quando algum
+        # pós-processador FFmpeg rodava — em vídeo baixado em formato único,
+        # ele era silenciosamente ignorado. download_ranges é o mecanismo
+        # oficial do yt-dlp e funciona nos dois casos.
         if params.get("recorte") and not is_playlist:
-            pp = []
-            if params.get("recorte_inicio"):
-                pp.extend(["-ss", self._t2s(params["recorte_inicio"])])
-            if params.get("recorte_fim"):
-                pp.extend(["-to", self._t2s(params["recorte_fim"])])
-            if pp:
-                opts.setdefault("postprocessor_args", {})["ffmpeg"] = pp
+            ini = self._t2s_num(params.get("recorte_inicio"))
+            fim = self._t2s_num(params.get("recorte_fim"))
+            if ini is not None or fim is not None:
+                opts["download_ranges"] = download_range_func(
+                    None, [(ini if ini is not None else 0.0,
+                            fim if fim is not None else float("inf"))]
+                )
+                opts["force_keyframes_at_cuts"] = True
 
         return opts
 
@@ -839,6 +1051,23 @@ class Api:
             pass
         return t
 
+    def _t2s_num(self, t):
+        """Converte 'mm:ss' ou 'hh:mm:ss' em segundos (float). None se inválido."""
+        if not t or not str(t).strip():
+            return None
+        partes = str(t).strip().split(":")
+        try:
+            partes = [int(p) for p in partes]
+        except ValueError:
+            return None
+        if len(partes) == 2:
+            return float(partes[0] * 60 + partes[1])
+        if len(partes) == 3:
+            return float(partes[0] * 3600 + partes[1] * 60 + partes[2])
+        if len(partes) == 1:
+            return float(partes[0])
+        return None
+
     # ── Busca ────────────────────────────────────────────────
 
     def search_youtube(self, query, source="youtube"):
@@ -868,19 +1097,28 @@ class Api:
                         "thumb":   e.get("thumbnail") or "",
                     })
                 return results
-        except Exception:
+        except Exception as e:
+            # Antes, qualquer erro virava "Nenhum resultado" — indistinguível de
+            # uma busca legítima sem resultados, e impossível de diagnosticar.
+            self._emit("log", {"msg": f"❌ Erro na busca ({source}): {e}"})
             return []
 
     def _search_mixcloud(self, query):
         try:
-            ctx = ssl.create_default_context()
-            ctx.check_hostname = False
-            ctx.verify_mode = ssl.CERT_NONE
-            params = urllib.parse.urlencode({"q": query, "type": "cloudcast", "limit": "8"})
-            url = f"https://api.mixcloud.com/search/?{params}"
-            req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-            with urllib.request.urlopen(req, timeout=10, context=ctx) as resp:
-                data = json.loads(resp.read())
+            import requests
+            params = {"q": query, "type": "cloudcast", "limit": "8"}
+            # requests traz o certifi junto, o que resolve o problema de
+            # certificados no Windows SEM desligar a verificação SSL
+            # (a versão anterior usava CERT_NONE, o que deixava a conexão
+            # vulnerável a interceptação).
+            resp = requests.get(
+                "https://api.mixcloud.com/search/",
+                params=params,
+                headers={"User-Agent": "Mozilla/5.0"},
+                timeout=10,
+            )
+            resp.raise_for_status()
+            data = resp.json()
             results = []
             for e in data.get("data") or []:
                 key = e.get("key", "")
@@ -892,7 +1130,8 @@ class Api:
                     "thumb":   (e.get("pictures") or {}).get("medium") or "",
                 })
             return results
-        except Exception:
+        except Exception as e:
+            self._emit("log", {"msg": f"❌ Erro na busca (mixcloud): {e}"})
             return []
 
     def _fmt_dur(self, s):
@@ -961,7 +1200,7 @@ if __name__ == "__main__":
         pos_x = pos_y = None  # fallback: deixa o pywebview decidir
 
     window = webview.create_window(
-        title            = "YT Downloader",
+        title            = "YTK DOWNLDER",
         url              = resource_path(os.path.join("ui", "index.html")),
         js_api           = api,
         width            = WIN_W,

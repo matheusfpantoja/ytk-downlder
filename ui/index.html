@@ -4,8 +4,6 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>YTK DOWNLDER</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -61,7 +59,7 @@
       <button class="btn-ghost theme-toggle" onclick="App.toggleTheme()" id="themeBtn">
         <span id="themeIcon">○</span>&nbsp;<span id="themeLabel">Tema claro</span>
       </button>
-      <button class="btn-ghost" onclick="App.openLogModal()">▤ &nbsp;Logs</button>
+      <button class="btn-ghost" onclick="App.openLogModal()" aria-label="Abrir log da sessão">▤ &nbsp;Logs</button>
       <div class="shortcuts-hint" title="Atalhos de teclado disponíveis">
         <span>⌨</span>
         <span>Ctrl+V baixar · Ctrl+F buscar</span>
@@ -89,6 +87,8 @@
         <p>YouTube, SoundCloud, Bandcamp, Vimeo e mais de 1000 sites</p>
       </div>
 
+      <div id="appWarn" class="app-warn" style="display:none"></div>
+
       <!-- URL -->
       <div class="section-block">
         <div class="card-label">Link</div>
@@ -96,7 +96,7 @@
           <input id="urlInput" type="text" class="input-url"
             placeholder="Cole o link (YouTube, SoundCloud, Bandcamp, Vimeo...)"
             onkeydown="if(event.key==='Enter') App.download()">
-          <button class="btn-icon" onclick="App.loadTxt()" title="Carregar .txt com links">❐</button>
+          <button class="btn-icon" onclick="App.loadTxt()" title="Carregar .txt com links" aria-label="Carregar arquivo .txt com links">❐</button>
         </div>
       </div>
 
@@ -472,8 +472,8 @@
           <div class="feat-item">
             <span class="feat-icon">⚡</span>
             <div class="feat-body">
-              <div class="feat-name">Prioridade imediata</div>
-              <div class="feat-desc">O botão "Baixar agora" coloca o item no topo da fila, acima dos demais.</div>
+              <div class="feat-name">Vários links de uma vez</div>
+              <div class="feat-desc">Cole vários links (um por linha) no campo de URL: cada um vira um item da fila, baixados em ordem.</div>
             </div>
           </div>
           <div class="feat-item">
@@ -679,6 +679,7 @@
             </div>
             <div class="queue-detalhe" id="subtitleProgDetalhe"></div>
           </div>
+          <button class="queue-cancel-btn" id="subtitleCancelBtn" onclick="App.cancelDownload()">Cancelar</button>
         </div>
       </div>
 
@@ -737,7 +738,7 @@
           <div class="input-url" id="captionFileName" style="display:flex;align-items:center;color:var(--main-sub)">
             Nenhum arquivo selecionado
           </div>
-          <button class="btn-icon" id="btnChooseVideo" onclick="App.chooseVideoFile()" title="Escolher vídeo">❐</button>
+          <button class="btn-icon" id="btnChooseVideo" onclick="App.chooseVideoFile()" title="Escolher vídeo" aria-label="Escolher arquivo de vídeo">❐</button>
         </div>
         <div class="drop-zone-hint">
           <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="22" height="22">
@@ -802,6 +803,7 @@
             <div class="queue-meta" id="captionProgMeta"></div>
             <div class="queue-detalhe" id="captionProgDetalhe"></div>
           </div>
+          <button class="queue-cancel-btn" id="captionCancelBtn" onclick="App.cancelDownload()">Cancelar</button>
         </div>
       </div>
 

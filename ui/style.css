@@ -4,7 +4,48 @@
    Main: fundo branco, títulos cinza, textos preto
    ═══════════════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap');
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('fonts/plus-jakarta-sans-v12-latin-regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('fonts/plus-jakarta-sans-v12-latin-500.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 600;
+  font-display: swap;
+  src: url('fonts/plus-jakarta-sans-v12-latin-600.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Plus Jakarta Sans';
+  font-style: normal;
+  font-weight: 700;
+  font-display: swap;
+  src: url('fonts/plus-jakarta-sans-v12-latin-700.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'DM Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('fonts/dm-mono-v16-latin_latin-ext-regular.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'DM Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('fonts/dm-mono-v16-latin_latin-ext-500.woff2') format('woff2');
+}
 
 /* ── Variáveis ────────────────────────────────────── */
 :root {
@@ -70,8 +111,7 @@ body {
 .sidebar {
   width: var(--sidebar-w);
   flex-shrink: 0;
-  /* Gradiente discreto: cinza base → preto no canto inferior esquerdo */
-  background: #f3f3f3;
+  background: var(--sidebar-bg);
   border-right: 1px solid var(--sidebar-b);
   display: flex;
   flex-direction: column;
@@ -128,7 +168,7 @@ body {
 }
 
 .logo-full-img {
-  height: 30px;
+  height: 38px;
   width: auto;
   object-fit: contain;
   display: block;
@@ -1518,6 +1558,39 @@ body {
   --main-b-light:  #1d1d1d;
   --main-input-bg: #191919;
   --card-bg: #181818;
+
+  /* Sidebar mais escura que o main, mesma relação de contraste do tema claro
+     (lá o main é branco e a sidebar um cinza mais carregado) */
+  --sidebar-bg:     #0a0a0a;
+  --sidebar-b:      rgba(255,255,255,0.08);
+  --sidebar-hover:  rgba(255,255,255,0.06);
+  --sidebar-active: rgba(255,255,255,0.10);
+}
+
+/* Textos/ícones da sidebar eram hardcoded para o cinza do tema claro */
+[data-tema="dark"] .nav-btn,
+[data-tema="dark"] .nav-btn .icon,
+[data-tema="dark"] .folder-path,
+[data-tema="dark"] .btn-ghost {
+  color: #9a9a9a;
+}
+[data-tema="dark"] .nav-btn:hover,
+[data-tema="dark"] .nav-btn.active {
+  color: #dcdcdc;
+}
+[data-tema="dark"] .nav-btn.active::before {
+  background: #dcdcdc;
+}
+[data-tema="dark"] .folder-path,
+[data-tema="dark"] .btn-ghost {
+  border-color: rgba(255,255,255,0.12);
+}
+[data-tema="dark"] .folder-label,
+[data-tema="dark"] .shortcuts-hint {
+  color: rgba(154,154,154,0.65);
+}
+[data-tema="dark"] .shortcuts-hint span:first-child {
+  color: rgba(154,154,154,0.85);
 }
 
 /* Página header h1 (estava hardcoded em #000) */
@@ -1903,3 +1976,36 @@ body {
 .info-panel-table th { color: var(--main-sub); font-weight: 600; }
 [data-tema="dark"] .info-panel-table th,
 [data-tema="dark"] .info-panel-table td { border-color: #272727; }
+
+#captionDropHint {
+  margin-top: 10px;
+}
+
+/* Banner de aviso do app (FFmpeg ausente, pasta indisponível, yt-dlp desatualizado) */
+.app-warn { margin-bottom: 18px; display: flex; flex-direction: column; gap: 8px; }
+.app-warn-item {
+  background: #fff6e5;
+  border: 1px solid #f0c987;
+  color: #6b4a10;
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.app-warn-link {
+  display: inline-block;
+  margin-top: 8px;
+  background: #0781fc;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.app-warn-link:hover { filter: brightness(0.93); }
+
+/* Item da fila que foi pulado por já estar no histórico */
+.queue-card[data-status="pulado"] .queue-icon { color: #8a8a8a; }
+.queue-card[data-status="pulado"] .queue-titulo { opacity: 0.7; }
