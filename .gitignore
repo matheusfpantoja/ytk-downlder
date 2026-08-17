@@ -1,4 +1,16 @@
-﻿bin/
+﻿# Binários do FFmpeg (baixados manualmente por máquina)
+bin/
+
+# Python
 __pycache__/
 *.pyc
+
+# Artefatos de build — nunca versionar
+build/
+dist/
+Output/
+OLD/
+
+# Local
 .claude/settings.local.json
+*.log
