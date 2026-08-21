@@ -1,11 +1,11 @@
 [Setup]
 AppId={{8E3C1A74-0B2F-4D91-9A55-A7C1D0E5F201}
 AppName=YTK DOWNLDER
-AppVersion=2.0
+AppVersion=2.1
 AppPublisher=Karl
 DefaultDirName={autopf}\YTK DOWNLDER
 DefaultGroupName=YTK DOWNLDER
-OutputBaseFilename=YTK-DOWNLDER-Setup-v2.0
+OutputBaseFilename=YTK-DOWNLDER-Setup-v2.1
 Compression=lzma2/max
 SolidCompression=yes
 WizardStyle=modern

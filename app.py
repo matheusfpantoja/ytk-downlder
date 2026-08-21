@@ -7,16 +7,33 @@ Backend Python puro + Interface Web moderna
 import multiprocessing
 multiprocessing.freeze_support()
 
+import os
+import sys
 import webview
+
+# Pasta gravável (fora do Program Files) onde uma versão atualizada do
+# yt-dlp pode ter sido baixada em sessão anterior. Se existir, ela tem
+# PRIORIDADE sobre a cópia empacotada no .exe — mas só passa a valer
+# depois que o programa é reiniciado (o Python já carregado na memória
+# não pode trocar de módulo em pleno funcionamento).
+YTDLP_UPDATE_DIR = os.path.join(
+    os.environ.get("LOCALAPPDATA") or os.path.expanduser("~"),
+    "YTK DOWNLDER", "ytdlp_update",
+)
+
+def _preferir_ytdlp_atualizado():
+    if os.path.isdir(os.path.join(YTDLP_UPDATE_DIR, "yt_dlp")):
+        sys.path.insert(0, YTDLP_UPDATE_DIR)
+
+_preferir_ytdlp_atualizado()
+
 import yt_dlp
 from yt_dlp.utils import DownloadCancelled, download_range_func
 import threading
 import json
-import os
 import re
 import shutil
 import subprocess
-import sys
 import ssl
 import tempfile
 import urllib.request
@@ -180,6 +197,20 @@ def _norm_url(url):
     return u.rstrip("/")
 
 
+def _versoes_diferem(local, remota):
+    """Compara versões no formato AAAA.MM.DD (ou similar), ignorando
+    zeros à esquerda em cada segmento — "2026.08.19" e "2026.8.19" são
+    a MESMA versão, só formatadas diferente (o PyPI normaliza, o
+    yt_dlp.version não)."""
+    try:
+        a = [int(x) for x in local.strip().split(".")]
+        b = [int(x) for x in remota.strip().split(".")]
+        return a != b
+    except (ValueError, AttributeError):
+        # Formato inesperado — cai no fallback de comparação de texto puro
+        return local.strip() != remota.strip()
+
+
 # ─── Histórico ────────────────────────────────────────────────
 
 class Historico:
@@ -291,27 +322,70 @@ class Api:
             self._emit("log", {"msg": f"Aviso: não foi possível verificar atualizações do yt-dlp ({e})"})
 
     def _checar_versao_ytdlp(self):
-        """Compara a versão embutida com a última publicada. Só avisa, não atualiza."""
+        """Compara a versão embutida com a última publicada no PyPI (a mesma
+        fonte usada pelo botão de atualizar) e avisa o usuário, com um botão
+        para atualizar sozinho, sem precisar esperar uma nova versão do app."""
         try:
             from yt_dlp.version import __version__ as versao_local
         except Exception:
             return
         try:
             req = urllib.request.Request(
-                "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest",
+                "https://pypi.org/pypi/yt-dlp/json",
                 headers={"User-Agent": "YTK-DOWNLDER"},
             )
             with urllib.request.urlopen(req, timeout=10) as resp:
-                versao_remota = json.loads(resp.read()).get("tag_name", "")
+                versao_remota = json.loads(resp.read()).get("info", {}).get("version", "")
         except Exception:
             return
         self._emit("log", {"msg": f"yt-dlp embutido: {versao_local} | mais recente: {versao_remota or '?'}"})
-        if versao_remota and versao_remota.strip() != versao_local.strip():
+        if versao_remota and _versoes_diferem(versao_local, versao_remota):
             self._emit("warn", {"msg":
                 "<strong>Existe uma versão mais nova do motor de download (yt-dlp).</strong> "
                 f"Esta cópia usa a versão {versao_local}. Se downloads do YouTube começarem a falhar, "
-                "instale a versão mais recente do YTK DOWNLDER."
+                "você pode atualizar o motor agora mesmo, sem esperar uma nova versão do programa. "
+                '<button class="app-warn-link" id="ytdlpUpdateBtn" onclick="App.atualizarYtdlp()">Atualizar motor de download</button>'
             })
+
+    def update_ytdlp_engine(self):
+        """Baixa a versão mais recente do yt-dlp direto do PyPI (sem precisar
+        de pip) e instala numa pasta gravável com prioridade sobre a cópia
+        empacotada no .exe. Só ativa de verdade depois de reiniciar o app."""
+        threading.Thread(target=self._update_ytdlp_thread, daemon=True).start()
+        return {"ok": True}
+
+    def _update_ytdlp_thread(self):
+        import zipfile, io
+        try:
+            self._emit("log", {"msg": "⬇️ Baixando a versão mais recente do yt-dlp (PyPI)…"})
+            req = urllib.request.Request("https://pypi.org/pypi/yt-dlp/json", headers={"User-Agent": "YTK-DOWNLDER"})
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                data = json.loads(resp.read())
+            versao = data.get("info", {}).get("version", "")
+            whl = next((a for a in data.get("urls", []) if a.get("packagetype") == "bdist_wheel"), None)
+            if not whl:
+                raise Exception("PyPI não retornou um arquivo .whl para o yt-dlp.")
+            with urllib.request.urlopen(whl["url"], timeout=60) as resp:
+                conteudo = resp.read()
+
+            os.makedirs(YTDLP_UPDATE_DIR, exist_ok=True)
+            destino_base = os.path.realpath(YTDLP_UPDATE_DIR)
+            with zipfile.ZipFile(io.BytesIO(conteudo)) as z:
+                for nome in z.namelist():
+                    if not nome.startswith("yt_dlp/"):
+                        continue
+                    destino = os.path.realpath(os.path.join(YTDLP_UPDATE_DIR, nome))
+                    if not destino.startswith(destino_base + os.sep):
+                        continue  # entrada suspeita fora da pasta de destino — ignorada
+                    z.extract(nome, YTDLP_UPDATE_DIR)
+
+            self._emit("log", {"msg": f"✅ yt-dlp {versao} baixado com sucesso."})
+            self._emit("ytdlp_update_done", {"ok": True, "versao": versao})
+        except Exception as e:
+            self._emit("log", {"msg": f"🔧 Detalhe técnico: [{type(e).__name__}] {e}"})
+            self._emit("ytdlp_update_done", {"ok": False, "error":
+                "Não foi possível atualizar o motor de download agora. Tente novamente mais tarde "
+                "ou instale a versão mais recente do YTK DOWNLDER."})
 
     # ── Comunicação Python → JS ──────────────────────────────
 
@@ -794,8 +868,11 @@ class Api:
 
     def _friendly_error(self, e):
         """Traduz mensagens técnicas de erro do yt-dlp em algo que o usuário
-        consiga entender e agir a respeito."""
+        consiga entender e agir a respeito. A mensagem técnica original nunca
+        se perde: ela sempre vai para o log da sidebar, mesmo quando o texto
+        mostrado ao usuário é reescrito para ficar mais simples."""
         msg = str(e)
+        self._emit("log", {"msg": f"🔧 Detalhe técnico: [{type(e).__name__}] {msg}"})
         if '403' in msg and 'forbidden' in msg.lower():
             return "Muitas requisições para o mesmo vídeo. Tente atualizar a página (ou aguardar um pouco) e iniciar o download novamente."
         return msg

@@ -180,6 +180,22 @@ const App = {
       case 'warn':
         this.addWarning(data.msg || '')
         break
+      case 'ytdlp_update_done': {
+        const btn = document.getElementById('ytdlpUpdateBtn')
+        if (data.ok) {
+          if (btn) {
+            btn.disabled = true
+            btn.textContent = '✓ Atualizado — reinicie o programa para usar'
+          }
+        } else {
+          if (btn) {
+            btn.disabled = false
+            btn.textContent = 'Tentar novamente'
+          }
+          alert(data.error || 'Não foi possível atualizar o motor de download agora.')
+        }
+        break
+      }
       case 'log': {
         const time = new Date().toLocaleTimeString('pt-BR', { hour12: false })
         this.logHistory.push(`[${time}] ${data.msg}`)
@@ -209,6 +225,17 @@ const App = {
 
   abrirSiteFFmpeg() {
     window.pywebview.api.open_url('https://www.gyan.dev/ffmpeg/builds/')
+  },
+
+  async atualizarYtdlp() {
+    const btn = document.getElementById('ytdlpUpdateBtn')
+    if (btn) { btn.disabled = true; btn.textContent = 'Atualizando…' }
+    try {
+      await window.pywebview.api.update_ytdlp_engine()
+    } catch (e) {
+      this._falhou('atualizar yt-dlp', e)
+      if (btn) { btn.disabled = false; btn.textContent = 'Atualizar motor de download' }
+    }
   },
 
   /* ══════════════════════════════════════════════════════

@@ -39,7 +39,19 @@ excludes = [
     'PyQt5', 'PyQt6', 'PySide2', 'PySide6', 'wx',
     'IPython', 'jupyter', 'notebook', 'pytest',
     'torchvision', 'torchaudio', 'tensorflow',
+    'yt_dlp',
 ]
+
+# yt-dlp precisa ficar de FORA do arquivo compactado (PYZ) para o recurso
+# de "Atualizar motor de download" funcionar. Se ele for compilado junto
+# do resto do app, o carregador interno do PyInstaller sempre teria
+# prioridade sobre qualquer atualização baixada depois — não importa o
+# que a gente colocar no sys.path. Copiando como arquivos soltos, o
+# Python resolve o import normalmente, e dá pra sobrepor com uma versão
+# mais nova depois.
+import yt_dlp as _ytdlp_probe
+_ytdlp_src = os.path.dirname(_ytdlp_probe.__file__)
+yt_dlp_tree = Tree(_ytdlp_src, prefix='yt_dlp', excludes=['*.pyc', '__pycache__'])
 
 a = Analysis(
     ['app.py'],
@@ -80,6 +92,7 @@ coll = COLLECT(
     exe,
     a.binaries,
     a.datas,
+    yt_dlp_tree,
     strip=False,
     upx=False,
     upx_exclude=[],
