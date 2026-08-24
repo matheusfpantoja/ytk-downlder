@@ -15,3 +15,8 @@ redist/
 # Local
 .claude/settings.local.json
 *.log
+# Ambiente de build (Python 3.11/3.12 com torch/whisper)
+.venv-build/
+
+# Configuração local do Claude Code (diverge por dispositivo)
+.claude/settings.json
