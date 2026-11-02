@@ -352,6 +352,10 @@ const App = {
           return
         }
         const _seg = (t) => t.split(':').reduce((acc, v) => acc * 60 + parseInt(v, 10), 0)
+        if (fim && _seg(fim) === 0) {
+          alert('O tempo de fim não pode ser 0:00.\n\nColoque um valor maior que zero (ex: 1:30).')
+          return
+        }
         if (ini && fim && _seg(fim) <= _seg(ini)) {
           alert('O fim do recorte precisa ser maior que o início.')
           return
@@ -668,7 +672,8 @@ const App = {
     const showBar    = item.status === 'baixando'
     const isBaixando = item.status === 'baixando'
     const detalhesBtn = item.status === 'erro'
-      ? `<button class="queue-details-btn" onclick="App.openLogModal(true)">Ver log completo</button>`
+      ? `<button class="queue-details-btn" onclick="App.openLogModal(true)">Ver log</button>
+         <button class="queue-details-btn" onclick="App.retryQueueItem('${this._esc(item.id)}')">↺ Tentar novamente</button>`
       : ''
     const cancelBtn = isBaixando
       ? `<button class="queue-cancel-btn" onclick="App.cancelDownload()">Cancelar</button>`
@@ -695,8 +700,11 @@ const App = {
 
   _queueMeta(params) {
     const prefix = params.playlist ? '☰ Playlist · ' : ''
-    if (params.tipo === 'video') return `${prefix}▶ ${params.resolucao || '720'}p`
-    return `${prefix}♪ ${(params.formato || 'mp3').toUpperCase()} · ${params.qualidade || '192'}kbps`
+    const trim = params.recorte && (params.recorte_inicio || params.recorte_fim)
+      ? ` · ✂ ${params.recorte_inicio || '0:00'}→${params.recorte_fim || 'fim'}`
+      : ''
+    if (params.tipo === 'video') return `${prefix}▶ ${params.resolucao || '720'}p${trim}`
+    return `${prefix}♪ ${(params.formato || 'mp3').toUpperCase()} · ${params.qualidade || '192'}kbps${trim}`
   },
 
   _shortUrl(url) {
@@ -725,6 +733,16 @@ const App = {
     this.renderQueue()
   },
 
+  retryQueueItem(id) {
+    const item = this.queue.find(i => i.id === id)
+    if (!item || item.status === 'baixando') return
+    item.status = 'aguardando'
+    item.erro   = null
+    item.pct    = 0
+    this.renderQueue()
+    if (!this.queueRunning) this.processQueue()
+  },
+
   async processQueue() {
     // Espera a aba de legenda terminar antes de puxar o próximo item da fila.
     // Quando ela terminar, o handle('download_complete') chama processQueue de novo.
@@ -732,6 +750,8 @@ const App = {
       this.queueRunning = false
       return
     }
+    // Não inicia novo item enquanto há um em andamento.
+    if (this.queueActive) return
     const item = this.queue.find(i => i.status === 'aguardando')
     if (!item) {
       this.queueRunning = false
