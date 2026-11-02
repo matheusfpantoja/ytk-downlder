@@ -28,7 +28,7 @@ def _preferir_ytdlp_atualizado():
 _preferir_ytdlp_atualizado()
 
 import yt_dlp
-from yt_dlp.utils import DownloadCancelled, download_range_func
+from yt_dlp.utils import DownloadCancelled
 import threading
 import json
 import re
@@ -544,17 +544,41 @@ class Api:
         return {'ok': True}
 
     def _translate_texts(self, texts, source, target):
-        """Traduz em lotes (poucas requisições). Depois de cada tradução, verifica
-        se o resultado voltou IDÊNTICO ao original quando isso é suspeito (frase
-        com 2+ palavras que deveria ter mudado de idioma) — o serviço gratuito às
-        vezes 'falha silenciosamente', devolvendo sucesso sem realmente traduzir,
-        sem lançar nenhum erro. Quando detecta esse padrão, tenta de novo o trecho
-        individualmente (com pequenas pausas) antes de desistir e registrar no log."""
+        """Traduz em lotes (poucas requisições). Usa MyMemoryTranslator como
+        serviço principal (API pública estável) e GoogleTranslator como fallback.
+        Verifica se o resultado voltou IDÊNTICO ao original — o serviço gratuito
+        às vezes 'falha silenciosamente'. Nesse caso, tenta individualmente antes
+        de desistir e registrar no log."""
         import time
-        from deep_translator import GoogleTranslator
-        translator = GoogleTranslator(source=source, target=target)
+
+        # Mapeamento para o formato de idioma esperado pelo MyMemory (ex: 'pt' → 'pt-BR')
+        _MM_LANGS = {
+            'pt': 'pt-BR', 'en': 'en-US', 'es': 'es-ES', 'fr': 'fr-FR',
+            'de': 'de-DE', 'ja': 'ja-JP', 'it': 'it-IT', 'ko': 'ko-KR',
+            'ru': 'ru-RU', 'zh': 'zh-CN',
+        }
+
+        translator = None
+        try:
+            from deep_translator import MyMemoryTranslator
+            translator = MyMemoryTranslator(
+                source=_MM_LANGS.get(source, source),
+                target=_MM_LANGS.get(target, target),
+            )
+        except Exception as e:
+            self._emit('log', {'msg': f'⚠️ MyMemory indisponível ({e}), tentando Google Translate…'})
+
+        if translator is None:
+            try:
+                from deep_translator import GoogleTranslator
+                translator = GoogleTranslator(source=source, target=target)
+            except Exception as e:
+                self._emit('log', {'msg': f'❌ Nenhum serviço de tradução disponível: {e}'})
+                return texts
+
         SEP = '\n'
         MAX_CHARS = 3000
+        erros_logados = [False]  # loga o erro real apenas uma vez para não spam
 
         def _suspeito(original, traduzido):
             if not traduzido or not traduzido.strip():
@@ -562,8 +586,7 @@ class Api:
             o, t = original.strip(), traduzido.strip()
             if o.lower() != t.lower():
                 return False
-            # Frases com 2+ palavras que voltaram idênticas são suspeitas de falha silenciosa.
-            # Textos curtos (nomes próprios, números, "OK.") podem legitimamente não mudar.
+            # Frases com 2+ palavras idênticas ao original são suspeitas de falha silenciosa.
             return len(o.split()) >= 2
 
         def _traduzir_lote(lote):
@@ -574,7 +597,10 @@ class Api:
                 if len(partes) != len(lote):
                     return None
                 return partes
-            except Exception:
+            except Exception as e:
+                if not erros_logados[0]:
+                    erros_logados[0] = True
+                    self._emit('log', {'msg': f'⚠️ Falha no serviço de tradução: [{type(e).__name__}] {e}'})
                 return None
 
         def _traduzir_um(texto, tentativas=2):
@@ -617,7 +643,7 @@ class Api:
                         falhas += 1
             time.sleep(0.2)
         if falhas:
-            self._emit('log', {'msg': f'⚠️ {falhas} de {len(texts)} trechos não puderam ser traduzidos mesmo após novas tentativas e permaneceram no idioma original.'})
+            self._emit('log', {'msg': f'⚠️ {falhas} de {len(texts)} trechos não puderam ser traduzidos e permaneceram no idioma original.'})
         return translated
 
     def _chunk_words(self, segments, max_chars=80, max_duration=6.0, pause_gap=0.6):
@@ -957,7 +983,7 @@ class Api:
 
         fmt_alvo = "mp4" if params.get("tipo") == "video" else params.get("formato", "mp3")
 
-        if not is_playlist and params.get("pular_duplicados") and self.historico.has(url, fmt_alvo):
+        if not is_playlist and params.get("pular_duplicados") and not params.get("recorte") and self.historico.has(url, fmt_alvo):
             self._emit("log", {"msg": f"⏭ Já baixado: {url[:45]}…"})
             self._pulou = True
             return ""
@@ -1026,6 +1052,20 @@ class Api:
                 self._emit("progress", {"pct": 0, "titulo": titulo_preview[:52], "detalhe": ""})
             info = ydl.process_ie_result(info, download=True)
             self._pos_download(info, params)
+
+            # Recorte: corta o arquivo final com FFmpeg após download + conversão.
+            # Feito aqui (pós-postprocessors) para garantir que funcione tanto
+            # para áudio (MP3/WAV/FLAC) quanto para vídeo (MP4).
+            if params.get("recorte") and info and info.get("requested_downloads"):
+                ini_s = self._t2s_num(params.get("recorte_inicio"))
+                fim_s = self._t2s_num(params.get("recorte_fim"))
+                if ini_s is not None or fim_s is not None:
+                    arquivo = info["requested_downloads"][0].get("filepath", "")
+                    if arquivo and os.path.exists(arquivo):
+                        self._emit("status", {"msg": "✂ Aplicando recorte…"})
+                        self._emit("progress", {"pct": 0.99, "detalhe": "Recortando…", "titulo": ""})
+                        self._trim_with_ffmpeg(arquivo, ini_s, fim_s)
+
             return info.get("title", "") if info else ""
 
     def _build_opts(self, params):
@@ -1080,20 +1120,6 @@ class Api:
                 opts["writethumbnail"] = True
                 opts["postprocessors"].append({"key": "EmbedThumbnail"})
 
-        # O recorte por postprocessor_args só tinha efeito quando algum
-        # pós-processador FFmpeg rodava — em vídeo baixado em formato único,
-        # ele era silenciosamente ignorado. download_ranges é o mecanismo
-        # oficial do yt-dlp e funciona nos dois casos.
-        if params.get("recorte") and not is_playlist:
-            ini = self._t2s_num(params.get("recorte_inicio"))
-            fim = self._t2s_num(params.get("recorte_fim"))
-            if ini is not None or fim is not None:
-                opts["download_ranges"] = download_range_func(
-                    None, [(ini if ini is not None else 0.0,
-                            fim if fim is not None else float("inf"))]
-                )
-                opts["force_keyframes_at_cuts"] = True
-
         return opts
 
     def _hook(self, d):
@@ -1136,6 +1162,40 @@ class Api:
         self.historico.add(titulo, url, fmt, qual, arquivo)
         self._emit("log",            {"msg": f"✅ {titulo}"})
         self._emit("history_update", {"item": self.historico.itens[0]})
+
+    def _trim_with_ffmpeg(self, arquivo, ini, fim):
+        """Corta o arquivo com FFmpeg (stream copy — rápido, sem re-encoding).
+        Funciona para MP3, WAV, FLAC e MP4. Substitui o arquivo original pelo
+        trecho recortado; limpa o temporário em caso de erro."""
+        ext = os.path.splitext(arquivo)[1]
+        tmp = arquivo + ".ytk_trim" + ext
+        # -ss antes de -i: seek rápido no container (sem decodificar tudo).
+        # -t usa duração em vez de -to para evitar ambiguidade quando -ss está antes de -i.
+        cmd = [self.ffmpeg_path, "-y"]
+        if ini is not None and ini > 0:
+            cmd += ["-ss", str(ini)]
+        cmd += ["-i", arquivo]
+        if fim is not None:
+            if ini is not None and ini > 0:
+                cmd += ["-t", str(fim - ini)]
+            else:
+                cmd += ["-to", str(fim)]
+        cmd += ["-c", "copy", tmp]
+        try:
+            subprocess.run(cmd, capture_output=True, check=True, timeout=300)
+            os.replace(tmp, arquivo)
+            self._emit("log", {"msg": "✂ Recorte aplicado com sucesso."})
+        except subprocess.CalledProcessError as e:
+            stderr = (e.stderr or b"").decode("utf-8", errors="replace")
+            self._emit("log", {"msg": f"⚠️ Recorte falhou (FFmpeg retornou erro): {stderr[:200]}"})
+            if os.path.exists(tmp):
+                try: os.remove(tmp)
+                except Exception: pass
+        except Exception as e:
+            self._emit("log", {"msg": f"⚠️ Recorte falhou: {e}"})
+            if os.path.exists(tmp):
+                try: os.remove(tmp)
+                except Exception: pass
 
     def _t2s(self, t):
         p = t.split(":")
