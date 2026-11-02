@@ -36,6 +36,22 @@ import shutil
 import subprocess
 import ssl
 import tempfile
+
+# No Windows o store de certificados do sistema às vezes não tem a cadeia
+# completa de alguns sites (Dailymotion, por exemplo), causando
+# CERTIFICATE_VERIFY_FAILED. O certifi vem junto com o requests e traz
+# o bundle completo da Mozilla — aplicar aqui garante que tanto o yt-dlp
+# quanto qualquer outra lib que chame ssl.create_default_context() usem
+# certificados atualizados, sem desabilitar a verificação.
+try:
+    import certifi as _certifi
+    _orig_ssl_ctx = ssl.create_default_context
+    def _ssl_ctx_certifi(*args, **kwargs):
+        kwargs.setdefault("cafile", _certifi.where())
+        return _orig_ssl_ctx(*args, **kwargs)
+    ssl.create_default_context = _ssl_ctx_certifi
+except Exception:
+    pass
 import urllib.request
 import urllib.parse
 from datetime import datetime
