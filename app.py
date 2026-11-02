@@ -511,7 +511,9 @@ class Api:
                     'outtmpl': os.path.join(pasta, 'Vídeos', '%(uploader)s', '%(title)s.%(ext)s'),
                     'writesubtitles': True,
                     'writeautomaticsub': True,
-                    'subtitleslangs': [lang],
+                    # Inclui variantes regionais para aumentar chance de encontrar legenda.
+                    # Ex: pedir 'pt' também tenta 'pt-BR' e 'pt-PT' (YouTube usa ambos).
+                    'subtitleslangs': list(dict.fromkeys([lang, f'{lang}-BR', f'{lang}-PT', f'{lang}-US'])) if len(lang) == 2 else [lang],
                     'subtitlesformat': formato,
                     'skip_download': False,
                     'noplaylist': True,
@@ -1076,11 +1078,17 @@ class Api:
                 ini_s = self._t2s_num(params.get("recorte_inicio"))
                 fim_s = self._t2s_num(params.get("recorte_fim"))
                 if ini_s is not None or fim_s is not None:
-                    arquivo = info["requested_downloads"][0].get("filepath", "")
-                    if arquivo and os.path.exists(arquivo):
-                        self._emit("status", {"msg": "✂ Aplicando recorte…"})
-                        self._emit("progress", {"pct": 0.99, "detalhe": "Recortando…", "titulo": ""})
-                        self._trim_with_ffmpeg(arquivo, ini_s, fim_s)
+                    # Guardas de sanidade: fim=0 produziria arquivo vazio; fim<=ini é inválido
+                    if fim_s is not None and fim_s <= 0:
+                        self._emit("log", {"msg": "⚠️ Recorte ignorado: o tempo de fim deve ser maior que 0."})
+                    elif ini_s is not None and fim_s is not None and fim_s <= ini_s:
+                        self._emit("log", {"msg": "⚠️ Recorte ignorado: o tempo de fim deve ser maior que o início."})
+                    else:
+                        arquivo = info["requested_downloads"][0].get("filepath", "")
+                        if arquivo and os.path.exists(arquivo):
+                            self._emit("status", {"msg": "✂ Aplicando recorte…"})
+                            self._emit("progress", {"pct": 0.99, "detalhe": "Recortando…", "titulo": ""})
+                            self._trim_with_ffmpeg(arquivo, ini_s, fim_s)
 
             return info.get("title", "") if info else ""
 
