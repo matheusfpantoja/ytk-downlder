@@ -1096,6 +1096,8 @@ class Api:
                             self._emit("status", {"msg": "✂ Aplicando recorte…"})
                             self._emit("progress", {"pct": 0.99, "detalhe": "Recortando…", "titulo": ""})
                             self._trim_with_ffmpeg(arquivo, ini_s, fim_s)
+                            if self._cancelar:
+                                raise DownloadCancelled("Download cancelado pelo usuário.")
 
             return info.get("title", "") if info else ""
 
