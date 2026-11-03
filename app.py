@@ -1069,6 +1069,8 @@ class Api:
             if titulo_preview:
                 self._emit("progress", {"pct": 0, "titulo": titulo_preview[:52], "detalhe": ""})
             info = ydl.process_ie_result(info, download=True)
+            if self._cancelar:
+                raise DownloadCancelled("Download cancelado pelo usuário.")
             self._pos_download(info, params)
 
             # Recorte: corta o arquivo final com FFmpeg após download + conversão.
