@@ -948,6 +948,8 @@ class Api:
                     self._emit("progress", {"pct": 0, "titulo": link[:52], "detalhe": f"Item {i+1} de {len(links)}"})
                     try:
                         self._baixar_unico(link, params)
+                        if self._cancelar:
+                            raise DownloadCancelled("Download cancelado pelo usuário.")
                         sucesso += 1
                     except DownloadCancelled:
                         # Cancelar deve parar a lista inteira, não só o item atual.
