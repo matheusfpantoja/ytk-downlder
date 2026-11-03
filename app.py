@@ -1046,7 +1046,10 @@ class Api:
                 item_opts["noplaylist"] = True
                 try:
                     with yt_dlp.YoutubeDL(item_opts) as ydl2:
-                        self._pos_download(ydl2.extract_info(eurl, download=True), params)
+                        info2 = ydl2.extract_info(eurl, download=True)
+                    if self._cancelar:
+                        raise DownloadCancelled("Download cancelado pelo usuário.")
+                    self._pos_download(info2, params)
                     sucesso += 1
                 except DownloadCancelled:
                     # Cancelamento deve interromper a playlist inteira, não só o item atual.
