@@ -962,7 +962,7 @@ document.addEventListener('keydown', async (e) => {
   const tecla = (e.key || '').toLowerCase()
 
   // Escape → cancela operação em andamento (funciona mesmo digitando)
-  if (e.key === 'Escape' && (App.queueRunning || App.subtitleActive || App.captionActive)) {
+  if (e.key === 'Escape' && (App.queueActive !== null || App.subtitleActive || App.captionActive)) {
     e.preventDefault()
     await App.cancelDownload()
     return

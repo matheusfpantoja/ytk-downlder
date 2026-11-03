@@ -948,6 +948,8 @@ class Api:
                     self._emit("progress", {"pct": 0, "titulo": link[:52], "detalhe": f"Item {i+1} de {len(links)}"})
                     try:
                         self._baixar_unico(link, params)
+                        if self._cancelar:
+                            raise DownloadCancelled("Download cancelado pelo usuário.")
                         sucesso += 1
                     except DownloadCancelled:
                         # Cancelar deve parar a lista inteira, não só o item atual.
@@ -1046,7 +1048,10 @@ class Api:
                 item_opts["noplaylist"] = True
                 try:
                     with yt_dlp.YoutubeDL(item_opts) as ydl2:
-                        self._pos_download(ydl2.extract_info(eurl, download=True), params)
+                        info2 = ydl2.extract_info(eurl, download=True)
+                    if self._cancelar:
+                        raise DownloadCancelled("Download cancelado pelo usuário.")
+                    self._pos_download(info2, params)
                     sucesso += 1
                 except DownloadCancelled:
                     # Cancelamento deve interromper a playlist inteira, não só o item atual.
@@ -1069,6 +1074,8 @@ class Api:
             if titulo_preview:
                 self._emit("progress", {"pct": 0, "titulo": titulo_preview[:52], "detalhe": ""})
             info = ydl.process_ie_result(info, download=True)
+            if self._cancelar:
+                raise DownloadCancelled("Download cancelado pelo usuário.")
             self._pos_download(info, params)
 
             # Recorte: corta o arquivo final com FFmpeg após download + conversão.
@@ -1089,6 +1096,8 @@ class Api:
                             self._emit("status", {"msg": "✂ Aplicando recorte…"})
                             self._emit("progress", {"pct": 0.99, "detalhe": "Recortando…", "titulo": ""})
                             self._trim_with_ffmpeg(arquivo, ini_s, fim_s)
+                            if self._cancelar:
+                                raise DownloadCancelled("Download cancelado pelo usuário.")
 
             return info.get("title", "") if info else ""
 
